@@ -183,11 +183,10 @@
             <div class="radar-sweeper">
               <div class="radar-center-dot"></div>
               <!-- targets placement -->
-              <div class="radar-target-dot" style="top: 35%; left: 30%;"></div>
-              <div class="radar-target-dot" style="top: 60%; left: 75%;"></div>
+              <div id="radar-dots"></div>
             </div>
-            <div style="position: absolute; bottom: 12px; font-size: 0.75rem; color: #81c784; font-weight: 500;">
-              Scanning coordinates for nearby flora...
+            <div id="radar-status" style="position: absolute; bottom: 12px; font-size: 0.75rem; color: #81c784; font-weight: 500;">
+              Waiting for GPS...
             </div>
           </div>
 
@@ -532,7 +531,7 @@
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=3.2"></script>
+  <script src="app.js?v=3.3"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>

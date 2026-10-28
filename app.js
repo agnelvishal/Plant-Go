@@ -1399,6 +1399,24 @@ function renderRadarList() {
   const listContainer = document.querySelector('.radar-list');
   if (!listContainer) return;
 
+  // Status line and sonar dots reflect real sightings within 5 km
+  const nearby = state.radarPlants.filter(p => p.distM != null && p.distM <= 5000);
+  const status = document.getElementById('radar-status');
+  if (status) {
+    if (!state.currentLocation) status.textContent = 'Waiting for GPS...';
+    else if (nearby.length === 0) status.textContent = 'No sightings within 5 km yet';
+    else status.textContent = nearby.length + ' sighting' + (nearby.length === 1 ? '' : 's') + ' within 5 km';
+  }
+  const dots = document.getElementById('radar-dots');
+  if (dots) {
+    const loc = state.currentLocation;
+    dots.innerHTML = loc ? nearby.slice(0, 12).map(p => {
+      const r = Math.min(1, p.distM / 5000) * 45;
+      const angle = Math.atan2(p.lat - loc.lat, p.lng - loc.lng);
+      return `<div class="radar-target-dot" style="top:${50 - r * Math.sin(angle)}%; left:${50 + r * Math.cos(angle)}%;"></div>`;
+    }).join('') : '';
+  }
+
   if (state.radarPlants.length === 0) {
     listContainer.innerHTML = `
       <div class="empty-state">
