@@ -1844,7 +1844,53 @@ async function handleAuthSubmit(e) {
 
 const GOOGLE_CLIENT_ID = "REDACTED.apps.googleusercontent.com";
 
+// Inside the Android app, Google's web button can't work (it navigates the WebView away),
+// so use the native Sign in with Google sheet via the SocialLogin plugin instead.
+let nativeGoogleReady = null;
+
+function getNativeSocialLogin() {
+  return isCapacitorNative() && window.Capacitor.Plugins && window.Capacitor.Plugins.SocialLogin
+    ? window.Capacitor.Plugins.SocialLogin
+    : null;
+}
+
+async function nativeGoogleSignIn() {
+  const social = getNativeSocialLogin();
+  if (!social) return;
+  try {
+    if (!nativeGoogleReady) {
+      nativeGoogleReady = social.initialize({ google: { webClientId: GOOGLE_CLIENT_ID } });
+    }
+    await nativeGoogleReady;
+    const res = await social.login({ provider: "google", options: { scopes: ["email", "profile"] } });
+    const idToken = res && res.result && res.result.idToken;
+    if (!idToken) throw new Error("Google did not return an ID token");
+    await handleGoogleCredentialResponse({ credential: idToken });
+  } catch (err) {
+    nativeGoogleReady = null;
+    const msg = (err && err.message) || String(err);
+    console.warn("Native Google sign-in failed:", err);
+    if (!/cancel/i.test(msg)) showToast("Google sign-in failed: " + msg, "error");
+  }
+}
+
+function renderNativeGoogleButtons() {
+  ["google-signin-modal-btn", "profile-google-btn-container"].forEach(id => {
+    const container = document.getElementById(id);
+    if (!container) return;
+    container.innerHTML =
+      '<button type="button" class="native-google-btn">' +
+        '<span class="native-google-g">G</span><span>Sign in with Google</span>' +
+      '</button>';
+    container.querySelector("button").onclick = nativeGoogleSignIn;
+  });
+}
+
 function initGoogleAuth() {
+  if (getNativeSocialLogin()) {
+    renderNativeGoogleButtons();
+    return;
+  }
   if (typeof google !== "undefined" && google.accounts && google.accounts.id) {
     google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
@@ -1971,6 +2017,10 @@ async function handleAuthLogout() {
     }
     if (typeof google !== "undefined" && google.accounts && google.accounts.id) {
       google.accounts.id.disableAutoSelect();
+    }
+    const social = getNativeSocialLogin();
+    if (social) {
+      try { await social.logout({ provider: "google" }); } catch (e) {}
     }
     clearSignedInUser();
     initGoogleAuth();

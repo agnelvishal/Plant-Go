@@ -2582,3 +2582,29 @@ body {
 @keyframes plantgo-spin {
   to { transform: rotate(360deg); }
 }
+
+.native-google-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px 9px 9px;
+  border-radius: 24px;
+  border: none;
+  background: #1a73e8;
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.native-google-g {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  color: #1a73e8;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
