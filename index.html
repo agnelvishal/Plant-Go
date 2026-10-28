@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Plant Go</title>
-  <link rel="stylesheet" href="style.css?v=3.2">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=3.3">
   <!-- Capacitor native bridge (served automatically on Android) -->
   <script src="capacitor.js"></script>
   <!-- Leaflet CSS for OpenStreetMap (Bundled Locally - No SRI or CDN blocks) -->
@@ -29,7 +30,7 @@
       <!-- Mock App Header (Keep this) -->
       <div class="app-header">
         <div class="app-title-area">
-          <div class="app-logo-badge">☘</div>
+          <div class="app-logo-badge"><img src="assets/logo.svg" alt=""></div>
           <div class="app-title-text">Plant Go</div>
         </div>
                 <div style="display:flex; align-items:center; gap:8px;">
@@ -38,8 +39,8 @@
             <span id="header-auth-label">Sign In</span>
           </button>
           <div class="user-score-badge">
-          <span class="level-val">Lv 1</span>
-          <span class="xp-indicator">0 / 1000 XP</span>
+          <span class="level-val">Lv 0</span>
+          <span class="xp-indicator">0 XP</span>
           </div>
         </div>
       </div>
@@ -226,16 +227,21 @@
           
           <!-- Top user badge -->
           <div class="profile-card-top">
-            <div class="profile-avatar-large" style="background-image: url('assets/avatar_explorer.png')"></div>
+            <button type="button" class="profile-avatar-large" id="profile-avatar-btn" style="background-image: url('assets/avatar_explorer.png')" onclick="openEditProfile()" disabled aria-label="Change profile picture">
+              <span class="profile-avatar-edit-badge" id="profile-avatar-edit-badge" style="display: none;">📷</span>
+            </button>
             <div class="profile-details-top">
-              <span class="profile-name">Explorer</span>
-              <span class="profile-title-rank" id="profile-rank">Botanist Rank (Lv. 1)</span>
+              <div class="profile-name-row">
+                <span class="profile-name">Explorer</span>
+                <button type="button" class="btn-edit-profile" id="btn-edit-profile" onclick="openEditProfile()" style="display: none;">✎ Edit</button>
+              </div>
+              <span class="profile-title-rank" id="profile-rank">Guest Explorer (Lv. 0)</span>
               
               <div class="profile-points-bar">
                 <div class="profile-bar-bg">
                   <div class="profile-bar-fill" id="profile-xp-fill" style="width: 0%;"></div>
                 </div>
-                <span class="profile-points-txt">XP to Level <span id="profile-next-level">2</span>: <span class="xp-indicator">0 / 1000 XP</span></span>
+                <span class="profile-points-txt" id="profile-points-txt">Sign in to start earning XP</span>
               </div>
             </div>
           </div>
@@ -480,7 +486,7 @@
     <div class="auth-card">
       <button type="button" class="auth-modal-close" id="auth-modal-close" onclick="closeAuthModal()" aria-label="Close dialog">&times;</button>
       <div class="auth-header-visual">
-        <div class="auth-logo-leaf">☘</div>
+        <div class="auth-logo-leaf"><img src="assets/logo.svg" alt=""></div>
         <h2 id="auth-modal-title">Welcome to PlantGo</h2>
         <p id="auth-modal-subtitle">Sign in to sync your botanical discoveries & rank</p>
       </div>
@@ -526,13 +532,40 @@
     </div>
   </div>
 
+  <!-- Edit Profile Modal -->
+  <div class="auth-modal-overlay" id="edit-profile-overlay" onclick="if(event.target === this) closeEditProfile()">
+    <div class="auth-card">
+      <button type="button" class="auth-modal-close" onclick="closeEditProfile()" aria-label="Close dialog">&times;</button>
+      <div class="auth-header-visual">
+        <h2>Edit profile</h2>
+        <p>Choose how other explorers see you</p>
+      </div>
+      <form class="auth-form" onsubmit="return saveProfileEdits(event)">
+        <div class="edit-profile-avatar-wrap">
+          <div class="edit-profile-avatar" id="edit-profile-avatar"></div>
+          <button type="button" class="auth-link-btn" onclick="pickAvatarPhoto()">Change photo</button>
+          <input type="file" id="edit-profile-file" accept="image/*" style="display:none;" onchange="handleAvatarFileInput(event)">
+        </div>
+        <div class="auth-input-group">
+          <label for="edit-profile-name">Display name</label>
+          <input type="text" id="edit-profile-name" maxlength="30" minlength="2" required autocomplete="nickname">
+        </div>
+        <div id="edit-profile-error" class="auth-error-banner" style="display:none;"></div>
+        <div class="edit-profile-actions">
+          <button type="button" class="auth-btn-secondary" onclick="closeEditProfile()">Cancel</button>
+          <button type="submit" class="auth-btn-primary" id="edit-profile-save">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
         <div class="phone-home-indicator"></div>
 
     </div>
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=3.3"></script>
+  <script src="app.js?v=3.4"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>

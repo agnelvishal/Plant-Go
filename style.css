@@ -111,14 +111,16 @@ body {
 .app-logo-badge {
   width: 28px;
   height: 28px;
-  background: var(--primary);
+  background: radial-gradient(circle at 50% 45%, #0f2a22, #08120e);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-size: 0.9rem;
-  font-weight: 700;
+}
+
+.app-logo-badge img {
+  width: 22px;
+  height: 22px;
 }
 
 .app-title-text {
@@ -844,9 +846,55 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+button.profile-avatar-large {
+  position: relative;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+button.profile-avatar-large:disabled {
+  cursor: default;
+}
+
+.profile-avatar-edit-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--primary, #2e7d32);
+  border: 2px solid var(--bg-card, #ffffff);
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  box-shadow: var(--shadow-sm);
+}
+
 .profile-details-top {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+}
+
+.profile-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-edit-profile {
+  align-items: center;
+  background: rgba(46, 125, 50, 0.1);
+  color: var(--primary, #2e7d32);
+  border: 1px solid rgba(46, 125, 50, 0.25);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .profile-name {
@@ -1782,11 +1830,14 @@ body {
   width: 52px;
   height: 52px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #4caf50, #2e7d32);
-  color: white;
-  font-size: 1.8rem;
+  background: radial-gradient(circle at 50% 45%, #0f2a22, #08120e);
   margin-bottom: 0.6rem;
   box-shadow: 0 6px 16px rgba(46, 125, 50, 0.25);
+}
+
+.auth-logo-leaf img {
+  width: 40px;
+  height: 40px;
 }
 .auth-header-visual h2 {
   font-size: 1.3rem;
@@ -2618,4 +2669,49 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Edit Profile modal (reuses the auth modal layout) */
+.edit-profile-avatar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.edit-profile-avatar {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background-color: var(--border-color);
+  background-size: cover;
+  background-position: center;
+  border: 3px solid var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.edit-profile-actions {
+  display: flex;
+  gap: 10px;
+}
+.edit-profile-actions > button {
+  flex: 1;
+}
+
+.auth-btn-secondary {
+  background: transparent;
+  color: var(--text-primary, #1b2e1e);
+  border: 1px solid var(--border-color, #dcdcdc);
+  border-radius: 12px;
+  padding: 11px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 4px;
+}
+
+.auth-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

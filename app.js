@@ -50,9 +50,9 @@ async function apiFetch(path, options = {}, timeoutMs = 8000) {
   const token = getSessionToken();
   if (token) headers["Authorization"] = "Bearer " + token;
   const res = await fetchWithTimeout(API_BASE + path, { ...options, headers }, timeoutMs);
-  if (res.status === 401 && token) {
-    setSessionToken(null);
-    applyUserStats(null);
+  // Expired session: drop back to the guest state (only once, even with parallel requests)
+  if (res.status === 401 && token && getSessionToken() === token) {
+    clearSignedInUser();
   }
   return res;
 }
@@ -73,9 +73,9 @@ function applyUserStats(u) {
     discoveredCount: u?.discoveredCount ?? 0,
     reviewedCount: u?.reviewedCount ?? 0,
     totalPoints: u?.totalPoints ?? 0,
-    level: u?.level ?? 1,
+    level: u ? (u.level ?? 1) : 0,
     xp: u?.xp ?? 0,
-    xpToNext: u?.xpToNext ?? 1000,
+    xpToNext: u ? (u.xpToNext ?? 1000) : 0,
     milestoneAchieved: Boolean(u?.milestoneAchieved)
   };
   updateProfileUI();
@@ -90,7 +90,8 @@ async function loadUserData() {
     apiFetch("/settings").then(r => r.ok ? r.json() : null).catch(() => null)
   ]);
 
-  applyUserStats(profileRes);
+  // Guests always see zero stats, never the backend's guest profile
+  applyUserStats(getSessionToken() ? profileRes : null);
 
   if (Array.isArray(feedsRes)) {
     state.feeds = feedsRes;
@@ -238,9 +239,9 @@ const state = {
     discoveredCount: 0,
     reviewedCount: 0,
     totalPoints: 0,
-    level: 1,
+    level: 0,
     xp: 0,
-    xpToNext: 1000,
+    xpToNext: 0,
     milestoneAchieved: false
   },
   feeds: [],
@@ -1515,15 +1516,22 @@ function updateProfileUI() {
   setText('profile-discovered-count', stats.discoveredCount);
   setText('profile-verified-count', stats.reviewedCount);
   setText('profile-total-points', Number(stats.totalPoints).toLocaleString());
-  setText('profile-rank', 'Botanist Rank (Lv. ' + stats.level + ')');
-  setText('profile-next-level', stats.level + 1);
+  const isGuest = stats.level === 0;
+  setText('profile-rank', (isGuest ? 'Guest Explorer' : 'Botanist Rank') + ' (Lv. ' + stats.level + ')');
+
+  const pointsTxt = document.getElementById('profile-points-txt');
+  if (pointsTxt) {
+    pointsTxt.innerHTML = isGuest
+      ? 'Sign in to start earning XP'
+      : 'XP to Level ' + (stats.level + 1) + ': <span class="xp-indicator"></span>';
+  }
 
   document.querySelectorAll('.level-val').forEach(el => { el.textContent = 'Lv ' + stats.level; });
   document.querySelectorAll('.xp-indicator').forEach(el => {
-    el.textContent = stats.xp + ' / ' + stats.xpToNext + ' XP';
+    el.textContent = isGuest ? '0 XP' : stats.xp + ' / ' + stats.xpToNext + ' XP';
   });
   const xpFill = document.getElementById('profile-xp-fill');
-  if (xpFill) xpFill.style.width = Math.min(100, Math.round((stats.xp / Math.max(1, stats.xpToNext)) * 100)) + '%';
+  if (xpFill) xpFill.style.width = isGuest ? '0%' : Math.min(100, Math.round((stats.xp / Math.max(1, stats.xpToNext)) * 100)) + '%';
 
   // Milestone Progress
   const count = stats.discoveredCount;
@@ -2089,6 +2097,12 @@ function updateAuthUI(user) {
   const profileLoggedCard = document.getElementById("profile-auth-logged");
   const profileEmailTxt = document.getElementById("profile-google-email");
   const deleteAccountBtn = document.getElementById("btn-delete-account");
+  const editProfileBtn = document.getElementById("btn-edit-profile");
+  const avatarEditBadge = document.getElementById("profile-avatar-edit-badge");
+
+  if (profileAvatar) profileAvatar.disabled = !user;
+  if (editProfileBtn) editProfileBtn.style.display = user ? "inline-flex" : "none";
+  if (avatarEditBadge) avatarEditBadge.style.display = user ? "flex" : "none";
 
   if (user) {
     const displayName = user.displayName || (user.email ? user.email.split("@")[0] : "Explorer");
@@ -2097,7 +2111,7 @@ function updateAuthUI(user) {
     if (headerBtn) headerBtn.classList.add("logged-in");
     if (profileNameEl) profileNameEl.textContent = displayName;
     if (profileAvatar && user.photoURL) {
-      profileAvatar.style.backgroundImage = "url('" + user.photoURL + "')";
+      profileAvatar.style.backgroundImage = cssUrl(resolveImageUrl(user.photoURL));
     }
     if (profileUnauthCard) profileUnauthCard.style.display = "none";
     if (profileLoggedCard) profileLoggedCard.style.display = "flex";
@@ -2119,7 +2133,203 @@ function updateAuthUI(user) {
   }
 }
 
+// Quoted CSS url() value that is safe for any image path or data URL
+function cssUrl(src) {
+  return 'url("' + String(src).replace(/["\\\n\r]/g, c => "\\" + c.charCodeAt(0).toString(16) + " ") + '")';
+}
+
+// --- EDIT PROFILE (name and profile picture) ---
+let editProfileAvatarData = null;
+
+function setEditProfileError(message) {
+  const el = document.getElementById("edit-profile-error");
+  if (!el) return;
+  el.textContent = message || "";
+  el.style.display = message ? "block" : "none";
+}
+
+function setEditProfileAvatarPreview(src) {
+  const el = document.getElementById("edit-profile-avatar");
+  if (el) el.style.backgroundImage = cssUrl(src || "assets/avatar_explorer.png");
+}
+
+function openEditProfile() {
+  if (!currentUser) {
+    openAuthModal();
+    return;
+  }
+  editProfileAvatarData = null;
+  setEditProfileError("");
+  const nameInput = document.getElementById("edit-profile-name");
+  if (nameInput) nameInput.value = currentUser.displayName || "";
+  setEditProfileAvatarPreview(resolveImageUrl(currentUser.photoURL));
+  const saveBtn = document.getElementById("edit-profile-save");
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = "Save";
+  }
+  const overlay = document.getElementById("edit-profile-overlay");
+  if (overlay) overlay.classList.add("active");
+}
+
+function closeEditProfile() {
+  const overlay = document.getElementById("edit-profile-overlay");
+  if (overlay) overlay.classList.remove("active");
+  editProfileAvatarData = null;
+}
+
+// Centre-crops an image to a square and downscales it to a small JPEG data URL
+function cropImageToSquare(src, size = 512) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const out = Math.min(size, side);
+      const canvas = document.createElement("canvas");
+      canvas.width = out;
+      canvas.height = out;
+      canvas.getContext("2d").drawImage(
+        img,
+        (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side,
+        0, 0, out, out
+      );
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => reject(new Error("Could not read that image"));
+    img.src = src;
+  });
+}
+
+async function useAvatarImage(src) {
+  try {
+    editProfileAvatarData = await cropImageToSquare(src);
+    setEditProfileAvatarPreview(editProfileAvatarData);
+    setEditProfileError("");
+  } catch (err) {
+    setEditProfileError(err.message);
+  }
+}
+
+async function pickAvatarPhoto() {
+  const nativeCam = isCapacitorNative() ? Camera : null;
+  if (!nativeCam) {
+    const input = document.getElementById("edit-profile-file");
+    if (input) {
+      input.value = "";
+      input.click();
+    }
+    return;
+  }
+
+  // Prompt lets the user pick camera or gallery; without camera permission, offer the gallery only
+  let source = CameraSource.Prompt;
+  if (typeof nativeCam.checkPermissions === "function") {
+    try {
+      const perm = await nativeCam.checkPermissions();
+      if (perm && perm.camera !== "granted" && typeof nativeCam.requestPermissions === "function") {
+        const req = await nativeCam.requestPermissions({ permissions: ["camera"] });
+        if (req && req.camera !== "granted") source = CameraSource.Photos;
+      }
+    } catch (permErr) {
+      console.warn("Camera checkPermissions error:", permErr);
+    }
+  }
+
+  try {
+    const photo = await nativeCam.getPhoto({
+      resultType: CameraResultType.DataUrl,
+      source,
+      quality: 80,
+      width: 512,
+      height: 512,
+      correctOrientation: true,
+      allowEditing: false,
+      saveToGallery: false
+    });
+    if (photo && photo.dataUrl) await useAvatarImage(photo.dataUrl);
+  } catch (err) {
+    const msg = (err && err.message) || "";
+    if (!/cancel/i.test(msg)) setEditProfileError("Could not get photo: " + (msg || "unknown error"));
+  }
+}
+
+function handleAvatarFileInput(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => useAvatarImage(reader.result);
+  reader.onerror = () => setEditProfileError("Could not read that image");
+  reader.readAsDataURL(file);
+}
+
+async function saveProfileEdits(event) {
+  if (event) event.preventDefault();
+  if (!currentUser) return false;
+
+  const nameInput = document.getElementById("edit-profile-name");
+  const name = (nameInput ? nameInput.value : "").replace(/\s+/g, " ").trim();
+  if ([...name].length < 2 || [...name].length > 30) {
+    setEditProfileError("Name must be 2 to 30 characters");
+    return false;
+  }
+
+  const body = {};
+  if (name !== currentUser.displayName) body.username = name;
+  if (editProfileAvatarData) body.avatar = editProfileAvatarData;
+  if (Object.keys(body).length === 0) {
+    closeEditProfile();
+    return false;
+  }
+
+  const saveBtn = document.getElementById("edit-profile-save");
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
+  }
+  setEditProfileError("");
+
+  try {
+    const res = await apiFetch("/profile", { method: "PATCH", body: JSON.stringify(body) }, 20000);
+    const data = await res.json().catch(() => null);
+    if (res.status === 401) {
+      closeEditProfile();
+      showToast("Your session expired, please sign in again", "error");
+      return false;
+    }
+    if (!res.ok || !data) {
+      throw new Error((data && data.error) || "Server error " + res.status);
+    }
+    currentUser.displayName = data.username || currentUser.displayName;
+    currentUser.photoURL = data.avatar || "";
+    localStorage.setItem("plantgo_saved_user", JSON.stringify(currentUser));
+    updateAuthUI(currentUser);
+    applyUserStats(data);
+    closeEditProfile();
+    showToast("Profile updated");
+
+    const feeds = await apiFetch("/feeds").then(r => r.ok ? r.json() : null).catch(() => null);
+    if (Array.isArray(feeds)) {
+      state.feeds = feeds;
+      renderFeeds();
+    }
+  } catch (err) {
+    console.warn("Profile update failed:", err);
+    setEditProfileError(err.message);
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save";
+    }
+  }
+  return false;
+}
+
 // Export globally so both inline HTML and JS event listeners can call them seamlessly
+window.openEditProfile = openEditProfile;
+window.closeEditProfile = closeEditProfile;
+window.pickAvatarPhoto = pickAvatarPhoto;
+window.handleAvatarFileInput = handleAvatarFileInput;
+window.saveProfileEdits = saveProfileEdits;
 window.openAuthModal = openAuthModal;
 window.closeAuthModal = closeAuthModal;
 window.toggleAuthMode = toggleAuthMode;
