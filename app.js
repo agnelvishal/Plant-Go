@@ -11,24 +11,39 @@ const Permissions = CapacitorPlugins.Permissions || null;
 // --- MARIADB BACKEND API CONFIGURATION ---
 const API_BASE = (function() {
   if (typeof window !== "undefined" && window.location) {
-    const host = window.location.hostname || "localhost";
-    return "http://" + host + ":5001/api";
+    const host = window.location.hostname || "127.0.0.1";
+    const cleanHost = (host === "localhost" || host === "127.0.0.1") ? "127.0.0.1" : host;
+    return "http://" + cleanHost + ":5001/api";
   }
-  return "http://localhost:5001/api";
+  return "http://127.0.0.1:5001/api";
 })();
 
 async function syncFromBackend() {
+  updateBackendStatusUI(false, "Connecting to MariaDB backend...", true);
   try {
-    const healthRes = await fetch(API_BASE + "/health", { signal: AbortSignal.timeout(2500) });
-    if (!healthRes.ok) throw new Error("Health check failed");
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeoutTimer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+
+    let healthRes = null;
+    try {
+      healthRes = await fetch(API_BASE + "/health", controller ? { signal: controller.signal } : {});
+    } catch (e1) {
+      const altUrl = API_BASE.includes("127.0.0.1") ? "http://localhost:5001/api/health" : "http://127.0.0.1:5001/api/health";
+      healthRes = await fetch(altUrl, controller ? { signal: controller.signal } : {});
+    } finally {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+    }
+
+    if (!healthRes || !healthRes.ok) throw new Error("Health check returned status " + (healthRes ? healthRes.status : "unknown"));
+    
     state.backendConnected = true;
     updateBackendStatusUI(true, "MariaDB Active (Port 5001)");
 
     const [profileRes, feedsRes, radarRes, settingsRes] = await Promise.all([
-      fetch(API_BASE + "/profile").then(r => r.ok ? r.json() : null),
-      fetch(API_BASE + "/feeds").then(r => r.ok ? r.json() : null),
-      fetch(API_BASE + "/radar").then(r => r.ok ? r.json() : null),
-      fetch(API_BASE + "/settings").then(r => r.ok ? r.json() : null)
+      fetch(API_BASE + "/profile").then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(API_BASE + "/feeds").then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(API_BASE + "/radar").then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(API_BASE + "/settings").then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
     if (profileRes) {
@@ -69,23 +84,32 @@ async function syncFromBackend() {
     console.log("🌿 MariaDB PlantGo data synced successfully!");
   } catch (err) {
     state.backendConnected = false;
-    updateBackendStatusUI(false, "Local Offline Mode (Backend offline)");
+    updateBackendStatusUI(false, "Offline mode (Could not reach MariaDB on port 5001)");
     console.warn("Backend unavailable, using local mock data:", err.message);
   }
 }
 
-function updateBackendStatusUI(connected, text) {
+function updateBackendStatusUI(connected, text, isChecking = false) {
   const badge = document.getElementById("backend-status-badge");
   const desc = document.getElementById("backend-status-desc");
   if (badge) {
-    badge.textContent = connected ? "Connected 🟢" : "Offline 🟡";
-    badge.style.background = connected ? "rgba(76, 175, 80, 0.15)" : "rgba(255, 152, 0, 0.15)";
-    badge.style.color = connected ? "#2e7d32" : "#e65100";
+    if (isChecking) {
+      badge.textContent = "Checking...";
+      badge.style.background = "rgba(33, 150, 243, 0.15)";
+      badge.style.color = "#1976d2";
+    } else {
+      badge.textContent = connected ? "Connected 🟢" : "Offline 🟡";
+      badge.style.background = connected ? "rgba(76, 175, 80, 0.15)" : "rgba(255, 152, 0, 0.15)";
+      badge.style.color = connected ? "#2e7d32" : "#e65100";
+    }
   }
   if (desc) {
     desc.textContent = text;
   }
 }
+
+// Expose globally for console testing
+window.syncFromBackend = syncFromBackend;
 
 // --- STATE MANAGEMENT ---
 const state = {
@@ -1008,6 +1032,17 @@ function initApp() {
     sheetClose.onclick = closeSpecimenDetails;
   }
 
+  // MariaDB Manual Reconnect Button
+  const reconnectDbBtn = document.getElementById("btn-reconnect-db");
+  if (reconnectDbBtn) {
+    reconnectDbBtn.onclick = async () => {
+      reconnectDbBtn.textContent = "Syncing...";
+      await syncFromBackend();
+      reconnectDbBtn.textContent = "Sync DB";
+      showToast(state.backendConnected ? "✓ Connected to MariaDB!" : "✕ Could not reach MariaDB on port 5001");
+    };
+  }
+
   // Detail sheet vote button
   const sheetVoteBtn = document.getElementById('detail-vote-action-btn');
   if (sheetVoteBtn) {
@@ -1093,3 +1128,5 @@ function initApp() {
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
+window.state = state;

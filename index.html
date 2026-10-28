@@ -274,12 +274,15 @@
                 </label>
               </div>
               <div class="setting-divider"></div>
-              <div class="setting-row">
+              <div class="setting-row" style="align-items: center;">
                 <div class="setting-info">
-                  <div class="setting-title">MariaDB Backend</div>
-                  <div class="setting-desc" id="backend-status-desc">Connecting to MariaDB server...</div>
+                  <div class="setting-title" style="display:flex; align-items:center; gap:8px;">
+                    MariaDB Backend
+                    <span id="backend-status-badge" class="milestone-badge-pill" style="font-size: 0.72rem; padding: 2px 8px; background: rgba(33, 150, 243, 0.15); color: #1976d2;">Checking...</span>
+                  </div>
+                  <div class="setting-desc" id="backend-status-desc">Connecting to MariaDB server (http://127.0.0.1:5001/api)...</div>
                 </div>
-                <span id="backend-status-badge" class="milestone-badge-pill" style="font-size: 0.72rem; background: rgba(33, 150, 243, 0.15); color: #1976d2;">Checking...</span>
+                <button id="btn-reconnect-db" class="btn-secondary" style="padding: 6px 12px; font-size: 0.72rem; border-radius: 8px; cursor: pointer; white-space: nowrap;">Sync DB</button>
               </div>
             </div>
           </div>
@@ -433,7 +436,7 @@
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js"></script>
+  <script src="app.js?v=2.1"></script>
   <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>
