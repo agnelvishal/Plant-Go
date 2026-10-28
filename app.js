@@ -537,20 +537,19 @@ function renderCameraControls(mode) {
     viewfinder.style.backgroundImage = "none";
     viewfinder.style.backgroundColor = "#111";
 
-    cameraControls.innerHTML = 
-      "<div class="camera-initial-menu">" +
-        "<div style="display:flex; gap:10px; width:100%; margin-bottom:10px;">" +
-          "<button class="btn-secondary" id="btn-gallery" style="flex:1;">🖼 Upload / Gallery</button>" +
-          "<button class="btn-primary" id="btn-camera" style="flex:1;">📸 Scan Flora</button>" +
-        "</div>" +
-        "<div style="display:flex; align-items:center; justify-content:center; gap:8px; font-size:0.75rem; color:#aaa;">" +
-          "<span>Quick Demo:</span>" +
-          "<button class="sample-pill" data-sample="assets/plant_rose.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🌹 Rose</button>" +
-          "<button class="sample-pill" data-sample="assets/plant_aloe.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🪴 Aloe</button>" +
-          "<button class="sample-pill" data-sample="assets/plant_banyan.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🌳 Banyan</button>" +
-        "</div>" +
-      "</div>";
-    
+    cameraControls.innerHTML = `
+      <div class="camera-initial-menu">
+        <div style="display:flex; gap:10px; width:100%; margin-bottom:10px;">
+          <button class="btn-secondary" id="btn-gallery" style="flex:1;">🖼 Upload / Gallery</button>
+          <button class="btn-primary" id="btn-camera" style="flex:1;">📸 Scan Flora</button>
+        </div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:8px; font-size:0.75rem; color:#aaa;">
+          <span>Quick Demo:</span>
+          <button class="sample-pill" data-sample="assets/plant_rose.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🌹 Rose</button>
+          <button class="sample-pill" data-sample="assets/plant_aloe.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🪴 Aloe</button>
+          <button class="sample-pill" data-sample="assets/plant_banyan.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🌳 Banyan</button>
+        </div>
+      </div>`;
     document.getElementById("btn-camera").onclick = () => checkAndRequestCameraPermission();
     document.getElementById("btn-gallery").onclick = () => checkAndRequestGalleryPermission();
 
@@ -563,24 +562,23 @@ function renderCameraControls(mode) {
   } else if (mode === "preview") {
     state.selectedOrgan = state.selectedOrgan || "auto";
 
-    cameraControls.innerHTML = 
-      "<div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:100%;">" +
-        "<div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary);">" +
-          "<span>Botanical Organ:</span>" +
-          "<div class="organ-chips-row" style="display:flex; gap:4px;">" +
-            "<button class="organ-chip " + (state.selectedOrgan === "auto" ? "active" : "") + "" data-organ="auto" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:" + (state.selectedOrgan === "auto" ? "var(--primary)" : "rgba(0,0,0,0.5)") + "; color:white; cursor:pointer;">⚡ Auto</button>" +
-            "<button class="organ-chip " + (state.selectedOrgan === "flower" ? "active" : "") + "" data-organ="flower" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:" + (state.selectedOrgan === "flower" ? "var(--primary)" : "rgba(0,0,0,0.5)") + "; color:white; cursor:pointer;">🌸 Flower</button>" +
-            "<button class="organ-chip " + (state.selectedOrgan === "leaf" ? "active" : "") + "" data-organ="leaf" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:" + (state.selectedOrgan === "leaf" ? "var(--primary)" : "rgba(0,0,0,0.5)") + "; color:white; cursor:pointer;">🍃 Leaf</button>" +
-            "<button class="organ-chip " + (state.selectedOrgan === "fruit" ? "active" : "") + "" data-organ="fruit" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:" + (state.selectedOrgan === "fruit" ? "var(--primary)" : "rgba(0,0,0,0.5)") + "; color:white; cursor:pointer;">🍒 Fruit</button>" +
-            "<button class="organ-chip " + (state.selectedOrgan === "bark" ? "active" : "") + "" data-organ="bark" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:" + (state.selectedOrgan === "bark" ? "var(--primary)" : "rgba(0,0,0,0.5)") + "; color:white; cursor:pointer;">🪵 Bark</button>" +
-          "</div>" +
-        "</div>" +
-        "<div class="camera-preview-menu" style="display:flex; gap:10px; width:100%;">" +
-          "<button class="btn-secondary" id="btn-retake" style="flex:1;">🔄 Retake</button>" +
-          "<button class="btn-primary" id="btn-use-photo" style="flex:2;">🌿 Identify with Pl@ntNet</button>" +
-        "</div>" +
-      "</div>";
-    
+    cameraControls.innerHTML = `
+      <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:100%;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary);">
+          <span>Botanical Organ:</span>
+          <div class="organ-chips-row" style="display:flex; gap:4px;">
+            <button class="organ-chip ${state.selectedOrgan === "auto" ? "active" : ""}" data-organ="auto" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "auto" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">⚡ Auto</button>
+            <button class="organ-chip ${state.selectedOrgan === "flower" ? "active" : ""}" data-organ="flower" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "flower" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🌸 Flower</button>
+            <button class="organ-chip ${state.selectedOrgan === "leaf" ? "active" : ""}" data-organ="leaf" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "leaf" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🍃 Leaf</button>
+            <button class="organ-chip ${state.selectedOrgan === "fruit" ? "active" : ""}" data-organ="fruit" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "fruit" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🍒 Fruit</button>
+            <button class="organ-chip ${state.selectedOrgan === "bark" ? "active" : ""}" data-organ="bark" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "bark" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🪵 Bark</button>
+          </div>
+        </div>
+        <div class="camera-preview-menu" style="display:flex; gap:10px; width:100%;">
+          <button class="btn-secondary" id="btn-retake" style="flex:1;">🔄 Retake</button>
+          <button class="btn-primary" id="btn-use-photo" style="flex:2;">🌿 Identify with Pl@ntNet</button>
+        </div>
+      </div>`;
     document.querySelectorAll(".organ-chip").forEach(chip => {
       chip.onclick = () => {
         state.selectedOrgan = chip.getAttribute("data-organ");
@@ -592,12 +590,12 @@ function renderCameraControls(mode) {
     document.getElementById("btn-use-photo").onclick = () => runIdentification(state.photoData, state.selectedOrgan);
 
   } else if (mode === "analyzing") {
-    cameraControls.innerHTML = 
-      "<div class="camera-analyzing-overlay" style="text-align:center; padding:15px;">" +
-        "<h3 style="color:var(--primary); margin-bottom:6px;">Consulting Pl@ntNet AI...</h3>" +
-        "<p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">Matching floral morphology, venation, and botanical taxonomy against 30,000+ species.</p>" +
-        "<div class="loading-spinner" style="margin:0 auto;"></div>" +
-      "</div>";
+    cameraControls.innerHTML = `
+      <div class="camera-analyzing-overlay" style="text-align:center; padding:15px;">
+        <h3 style="color:var(--primary); margin-bottom:6px;">Consulting Pl@ntNet AI...</h3>
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">Matching floral morphology, venation, and botanical taxonomy against 30,000+ species.</p>
+        <div class="loading-spinner" style="margin:0 auto;"></div>
+      </div>`;
   }
 }
 
@@ -766,43 +764,43 @@ function displayIdentificationResult(result) {
   let candidatesHtml = "";
   if (result.candidates && result.candidates.length > 1) {
     candidatesHtml = 
-      "<div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">" +
-        "<span style="font-size: 0.72rem; color: var(--primary); font-weight: 600; text-transform: uppercase;">Other Candidates:</span>" +
-        "<div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;">" +
+      '<div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">' +
+        '<span style="font-size: 0.72rem; color: var(--primary); font-weight: 600; text-transform: uppercase;">Other Candidates:</span>' +
+        '<div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;">' +
           result.candidates.slice(1, 3).map(c => 
-            "<span style="font-size: 0.7rem; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 6px; color: var(--text-secondary);">" +
-              (c.commonNames?.[0] || c.scientificName) + " (" + c.score + ")" +
-            "</span>"
-          ).join("") +
-        "</div>" +
-      "</div>";
+            '<span style="font-size: 0.7rem; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 6px; color: var(--text-secondary);">' +
+              (c.commonNames?.[0] || c.scientificName) + ' (' + c.score + ')' +
+            '</span>'
+          ).join('') +
+        '</div>' +
+      '</div>';
   }
 
   let quotaBadgeHtml = "";
   if (result.remainingRequests !== undefined) {
     quotaBadgeHtml = 
-      "<div style="margin-top: 8px; font-size: 0.72rem; color: #81c784; font-weight:500;">" +
-        "✨ Pl@ntNet API Quota: " + result.remainingRequests + " requests remaining" +
-      "</div>";
+      '<div style="margin-top: 8px; font-size: 0.72rem; color: #81c784; font-weight:500;">' +
+        '✨ Pl@ntNet API Quota: ' + result.remainingRequests + ' requests remaining' +
+      '</div>';
   }
 
   const detailsHtml = 
-    "<div class="result-details" style="padding: 0.6rem 0; font-size: 0.82rem; color: var(--text-secondary);">" +
-      "<p style="margin-bottom:4px;"><b>Family:</b> " + result.family + (result.detectedOrgan ? " • <b>Organ:</b> " + result.detectedOrgan : "") + "</p>" +
-      (result.sun ? "<p style="margin-bottom:4px;"><b>Sunlight:</b> " + result.sun + "</p>" : "") +
-      (result.water ? "<p style="margin-bottom:4px;"><b>Water:</b> " + result.water + "</p>" : "") +
-      "<p style="margin-bottom:4px;"><b>Care:</b> " + result.care + "</p>" +
-      "<p><b>Notes:</b> " + result.description + "</p>" +
+    '<div class="result-details" style="padding: 0.6rem 0; font-size: 0.82rem; color: var(--text-secondary);">' +
+      '<p style="margin-bottom:4px;"><b>Family:</b> ' + result.family + (result.detectedOrgan ? ' • <b>Organ:</b> ' + result.detectedOrgan : '') + '</p>' +
+      (result.sun ? '<p style="margin-bottom:4px;"><b>Sunlight:</b> ' + result.sun + '</p>' : '') +
+      (result.water ? '<p style="margin-bottom:4px;"><b>Water:</b> ' + result.water + '</p>' : '') +
+      '<p style="margin-bottom:4px;"><b>Care:</b> ' + result.care + '</p>' +
+      '<p><b>Notes:</b> ' + result.description + '</p>' +
       candidatesHtml +
       quotaBadgeHtml +
-    "</div>";
+    '</div>';
   
   document.getElementById("ai-results-list").innerHTML = detailsHtml;
 
   const confirmRow = overlay.querySelector(".confirm-action-row");
   confirmRow.innerHTML = 
-    "<button class="btn-secondary" id="ai-cancel-btn">Retake</button>" +
-    "<button class="btn-primary" id="ai-confirm-btn">Confirm & Submit (+250 XP)</button>";
+    '<button class="btn-secondary" id="ai-cancel-btn">Retake</button>' +
+    '<button class="btn-primary" id="ai-confirm-btn">Confirm & Submit (+250 XP)</button>';
   
   document.getElementById("ai-cancel-btn").onclick = () => {
     overlay.classList.remove("active");
@@ -1276,10 +1274,252 @@ function initApp() {
   changeTab('map');
   updateProfileUI();
 
+  initFirebaseAuth();
+
   // Sync data with MariaDB backend
   syncFromBackend();
 }
 
-document.addEventListener('DOMContentLoaded', initApp);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 window.state = state;
+
+
+// --- FIREBASE AUTHENTICATION INITIALIZATION & HANDLERS ---
+const firebaseConfig = {
+  apiKey: "REDACTED",
+  authDomain: "REDACTED",
+  projectId: "REDACTED",
+  storageBucket: "REDACTED",
+  appId: "REDACTED"
+};
+
+let fbAuth = null;
+let currentUser = null;
+let authIsSignUp = false;
+
+function initFirebaseAuth() {
+  try {
+    if (typeof firebase !== 'undefined') {
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      fbAuth = firebase.auth();
+
+      fbAuth.onAuthStateChanged((user) => {
+        currentUser = user;
+        updateAuthUI(user);
+      });
+      console.log("☘ Firebase Auth initialized successfully");
+    } else {
+      console.warn("Firebase SDK not yet loaded.");
+    }
+  } catch (err) {
+    console.error("Firebase Auth initialization warning:", err);
+  }
+
+  // Setup DOM Event Listeners as well as inline handlers
+  const headerBtn = document.getElementById('header-auth-btn');
+  const modalOverlay = document.getElementById('auth-modal-overlay');
+  const closeBtn = document.getElementById('auth-modal-close');
+  const form = document.getElementById('auth-form');
+  const toggleBtn = document.getElementById('auth-toggle-btn');
+  const logoutBtn = document.getElementById('auth-logout-btn');
+
+  if (headerBtn) headerBtn.onclick = openAuthModal;
+  if (closeBtn) closeBtn.onclick = closeAuthModal;
+  if (toggleBtn) toggleBtn.onclick = toggleAuthMode;
+  if (logoutBtn) logoutBtn.onclick = handleAuthLogout;
+  if (form) form.onsubmit = handleAuthSubmit;
+  if (modalOverlay) {
+    modalOverlay.onclick = (e) => {
+      if (e.target === modalOverlay) closeAuthModal();
+    };
+  }
+}
+
+function openAuthModal() {
+  const overlay = document.getElementById('auth-modal-overlay');
+  const errorBanner = document.getElementById('auth-error-msg');
+  if (errorBanner) errorBanner.style.display = 'none';
+
+  const authForm = document.getElementById('auth-form');
+  const loggedInView = document.getElementById('auth-logged-in-view');
+
+  if (currentUser) {
+    if (authForm) authForm.style.display = 'none';
+    if (loggedInView) loggedInView.style.display = 'flex';
+    const emailEl = document.getElementById('auth-user-email');
+    if (emailEl) emailEl.textContent = currentUser.email || 'Explorer';
+    const titleEl = document.getElementById('auth-modal-title');
+    if (titleEl) titleEl.textContent = 'Account Profile';
+    const subEl = document.getElementById('auth-modal-subtitle');
+    if (subEl) subEl.textContent = 'Connected with Firebase Authentication';
+  } else {
+    if (authForm) authForm.style.display = 'flex';
+    if (loggedInView) loggedInView.style.display = 'none';
+    updateAuthModalMode();
+  }
+
+  if (overlay) {
+    overlay.style.display = 'flex';
+    overlay.classList.add('active');
+  }
+}
+
+function closeAuthModal() {
+  const overlay = document.getElementById('auth-modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.classList.remove('active');
+  }
+}
+
+function toggleAuthMode() {
+  authIsSignUp = !authIsSignUp;
+  updateAuthModalMode();
+}
+
+function updateAuthModalMode() {
+  const title = document.getElementById('auth-modal-title');
+  const subtitle = document.getElementById('auth-modal-subtitle');
+  const submitBtn = document.getElementById('auth-submit-btn');
+  const prompt = document.getElementById('auth-toggle-prompt');
+  const toggleBtn = document.getElementById('auth-toggle-btn');
+  const errorBanner = document.getElementById('auth-error-msg');
+  if (errorBanner) errorBanner.style.display = 'none';
+
+  if (authIsSignUp) {
+    if (title) title.textContent = 'Create Explorer Account';
+    if (subtitle) subtitle.textContent = 'Join the botanical citizen-science network';
+    if (submitBtn) submitBtn.textContent = 'Create Account';
+    if (prompt) prompt.textContent = 'Already have an account?';
+    if (toggleBtn) toggleBtn.textContent = 'Sign In';
+  } else {
+    if (title) title.textContent = 'Welcome to PlantGo';
+    if (subtitle) subtitle.textContent = 'Sign in to sync your botanical discoveries & rank';
+    if (submitBtn) submitBtn.textContent = 'Sign In';
+    if (prompt) prompt.textContent = "Don't have an account?";
+    if (toggleBtn) toggleBtn.textContent = 'Create Account';
+  }
+}
+
+async function handleAuthSubmit(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  const emailInput = document.getElementById('auth-email');
+  const passInput = document.getElementById('auth-password');
+  const errorBanner = document.getElementById('auth-error-msg');
+  const submitBtn = document.getElementById('auth-submit-btn');
+
+  if (!emailInput || !passInput) return false;
+  const email = emailInput.value.trim();
+  const password = passInput.value;
+
+  if (!email || !password) {
+    if (errorBanner) {
+      errorBanner.textContent = 'Please fill in both email and password.';
+      errorBanner.style.display = 'block';
+    }
+    return false;
+  }
+
+  if (password.length < 6) {
+    if (errorBanner) {
+      errorBanner.textContent = 'Password must be at least 6 characters.';
+      errorBanner.style.display = 'block';
+    }
+    return false;
+  }
+
+  if (errorBanner) errorBanner.style.display = 'none';
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Please wait...';
+  }
+
+  try {
+    if (!fbAuth) {
+      if (typeof firebase !== 'undefined') {
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        fbAuth = firebase.auth();
+      } else {
+        throw new Error('Firebase SDK is not loaded. Please check your internet connection.');
+      }
+    }
+
+    if (authIsSignUp) {
+      const res = await fbAuth.createUserWithEmailAndPassword(email, password);
+      showToast('Account created! Welcome, ' + (res.user.email || 'Explorer') + ' 🌱', 'success');
+    } else {
+      const res = await fbAuth.signInWithEmailAndPassword(email, password);
+      showToast('Signed in as ' + (res.user.email || 'Explorer') + ' ☘', 'success');
+    }
+    closeAuthModal();
+  } catch (err) {
+    console.error('Firebase Auth Error:', err);
+    let msg = err.message || 'Authentication error';
+    if (err.code === 'auth/invalid-email') msg = 'Invalid email address format.';
+    else if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') msg = 'Incorrect email or password.';
+    else if (err.code === 'auth/wrong-password') msg = 'Incorrect password.';
+    else if (err.code === 'auth/email-already-in-use') msg = 'Email is already registered. Click "Sign In" below.';
+    else if (err.code === 'auth/weak-password') msg = 'Password must be at least 6 characters.';
+    else if (err.code === 'auth/operation-not-allowed') msg = 'Email/Password auth is not enabled in Firebase Console.';
+    if (errorBanner) {
+      errorBanner.textContent = msg;
+      errorBanner.style.display = 'block';
+    }
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = authIsSignUp ? 'Create Account' : 'Sign In';
+    }
+  }
+  return false;
+}
+
+async function handleAuthLogout() {
+  try {
+    if (fbAuth) {
+      await fbAuth.signOut();
+      showToast('Signed out of PlantGo', 'info');
+      closeAuthModal();
+    }
+  } catch (err) {
+    console.error("Sign out error:", err);
+  }
+}
+
+function updateAuthUI(user) {
+  const label = document.getElementById('header-auth-label');
+  const icon = document.getElementById('header-auth-icon');
+  const headerBtn = document.getElementById('header-auth-btn');
+  const profileNameEl = document.querySelector('.profile-name');
+
+  if (user) {
+    const username = (user.email ? user.email.split('@')[0] : 'Explorer');
+    if (label) label.textContent = username;
+    if (icon) icon.textContent = '🌿';
+    if (headerBtn) headerBtn.classList.add('logged-in');
+    if (profileNameEl) profileNameEl.textContent = username;
+  } else {
+    if (label) label.textContent = 'Sign In';
+    if (icon) icon.textContent = '👤';
+    if (headerBtn) headerBtn.classList.remove('logged-in');
+    if (profileNameEl) profileNameEl.textContent = 'Explorer_Forest_9';
+  }
+}
+
+// Export globally so both inline HTML and JS event listeners can call them seamlessly
+window.openAuthModal = openAuthModal;
+window.closeAuthModal = closeAuthModal;
+window.toggleAuthMode = toggleAuthMode;
+window.handleAuthSubmit = handleAuthSubmit;
+window.handleAuthLogout = handleAuthLogout;
+window.initFirebaseAuth = initFirebaseAuth;
+
+// Initialize Firebase immediately on script evaluation
+initFirebaseAuth();

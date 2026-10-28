@@ -10,6 +10,9 @@
     integrity="sha256-p4NxAoJBhIIN+hmNH3n+GiOz5s1PPN61xLK9OADa1lX="
     crossorigin=""/>
   <!-- Leaflet JS -->
+    <!-- Firebase App & Auth SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nE6z3B54w50Y6jT0T9c5kLdFfTj1u9vC6BfXfT3t0="
     crossorigin=""></script>
@@ -29,9 +32,15 @@
           <div class="app-logo-badge">☘</div>
           <div class="app-title-text">Plant Go</div>
         </div>
-        <div class="user-score-badge">
+                <div style="display:flex; align-items:center; gap:8px;">
+          <button id="header-auth-btn" class="header-auth-pill" onclick="openAuthModal()" title="Account">
+            <span id="header-auth-icon">👤</span>
+            <span id="header-auth-label">Sign In</span>
+          </button>
+          <div class="user-score-badge">
           <span class="level-val">14</span>
           <span class="xp-indicator">2340/5000 XP</span>
+          </div>
         </div>
       </div>
 
@@ -431,14 +440,59 @@
       </div>
 
       <!-- Home indicator bar -->
-      <div class="phone-home-indicator"></div>
+      <!-- Firebase Authentication Modal -->
+  <div class="auth-modal-overlay" id="auth-modal-overlay" onclick="if(event.target === this) closeAuthModal()">
+    <div class="auth-card">
+      <button type="button" class="auth-modal-close" id="auth-modal-close" onclick="closeAuthModal()" aria-label="Close dialog">&times;</button>
+      <div class="auth-header-visual">
+        <div class="auth-logo-leaf">☘</div>
+        <h2 id="auth-modal-title">Welcome to PlantGo</h2>
+        <p id="auth-modal-subtitle">Sign in to sync your botanical discoveries & rank</p>
+      </div>
+
+      <!-- Logged Out View (Form) -->
+      <form id="auth-form" class="auth-form" onsubmit="return handleAuthSubmit(event)">
+        <div class="auth-input-group">
+          <label for="auth-email">Email Address</label>
+          <input type="email" id="auth-email" placeholder="botanist@plantgo.org" required autocomplete="email">
+        </div>
+        <div class="auth-input-group">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" placeholder="At least 6 characters" required minlength="6" autocomplete="current-password">
+        </div>
+
+        <div id="auth-error-msg" class="auth-error-banner" style="display:none;"></div>
+
+        <button type="submit" id="auth-submit-btn" class="auth-btn-primary">Sign In</button>
+
+        <div class="auth-toggle-mode">
+          <span id="auth-toggle-prompt">Don't have an account?</span>
+          <button type="button" id="auth-toggle-btn" class="auth-link-btn" onclick="toggleAuthMode()">Create Account</button>
+        </div>
+      </form>
+
+      <!-- Logged In View -->
+      <div id="auth-logged-in-view" class="auth-logged-in-view" style="display:none;">
+        <div class="auth-user-card">
+          <div class="auth-user-avatar">🌱</div>
+          <div class="auth-user-info">
+            <div id="auth-user-email" class="auth-user-email-text">user@example.com</div>
+            <div class="auth-user-status">Firebase Authenticated</div>
+          </div>
+        </div>
+        <button type="button" id="auth-logout-btn" class="auth-btn-danger" onclick="handleAuthLogout()">Sign Out</button>
+      </div>
+    </div>
+  </div>
+
+        <div class="phone-home-indicator"></div>
 
     </div>
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=2.1"></script>
-  <!-- Toast Notification System -->
+  <script src="app.js?v=2.4"></script>
+    <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>
 </html>
