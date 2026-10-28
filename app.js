@@ -875,9 +875,9 @@ function isCapacitorNative() {
   );
 }
 
-async function openCaptureFlow() {
+function openCaptureFlow() {
+  // Show the Upload / Open Camera choice; changeTab renders it via initCameraFlow
   changeTab("ai-identify");
-  await startCameraCapture();
 }
 
 function closeCameraView() {
