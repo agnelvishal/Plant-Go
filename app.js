@@ -9,27 +9,30 @@ const Permissions = CapacitorPlugins.Permissions || null;
 
 // --- STATE MANAGEMENT ---
 // --- MARIADB BACKEND API CONFIGURATION ---
-const API_BASE = (function() {
-  if (typeof window !== "undefined" && window.location) {
-    const host = window.location.hostname || "127.0.0.1";
-    const cleanHost = (host === "localhost" || host === "127.0.0.1") ? "127.0.0.1" : host;
-    return "http://" + cleanHost + ":5001/api";
-  }
-  return "http://127.0.0.1:5001/api";
-})();
+const CLOUD_API_BASE = "https://plantgo.gptindia.pro/api";
+const LOCAL_API_BASE = "http://127.0.0.1:5001/api";
+
+let API_BASE = CLOUD_API_BASE;
 
 async function syncFromBackend() {
   updateBackendStatusUI(false, "Connecting to MariaDB backend...", true);
   try {
     const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timeoutTimer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+    const timeoutTimer = controller ? setTimeout(() => controller.abort(), 4000) : null;
 
     let healthRes = null;
+    let activeEndpoint = API_BASE;
     try {
       healthRes = await fetch(API_BASE + "/health", controller ? { signal: controller.signal } : {});
     } catch (e1) {
-      const altUrl = API_BASE.includes("127.0.0.1") ? "http://localhost:5001/api/health" : "http://127.0.0.1:5001/api/health";
-      healthRes = await fetch(altUrl, controller ? { signal: controller.signal } : {});
+      const fallbackUrl = (API_BASE === CLOUD_API_BASE) ? (LOCAL_API_BASE + "/health") : (CLOUD_API_BASE + "/health");
+      try {
+        healthRes = await fetch(fallbackUrl, controller ? { signal: controller.signal } : {});
+        if (healthRes && healthRes.ok) {
+          activeEndpoint = (API_BASE === CLOUD_API_BASE) ? LOCAL_API_BASE : CLOUD_API_BASE;
+          API_BASE = activeEndpoint;
+        }
+      } catch (e2) {}
     } finally {
       if (timeoutTimer) clearTimeout(timeoutTimer);
     }
@@ -37,7 +40,8 @@ async function syncFromBackend() {
     if (!healthRes || !healthRes.ok) throw new Error("Health check returned status " + (healthRes ? healthRes.status : "unknown"));
     
     state.backendConnected = true;
-    updateBackendStatusUI(true, "MariaDB Active (Port 5001)");
+    const label = activeEndpoint.includes("plantgo.gptindia.pro") ? "Cloud Server Active" : "Local MariaDB Active";
+    updateBackendStatusUI(true, label);
 
     const [profileRes, feedsRes, radarRes, settingsRes] = await Promise.all([
       fetch(API_BASE + "/profile").then(r => r.ok ? r.json() : null).catch(() => null),
@@ -84,7 +88,7 @@ async function syncFromBackend() {
     console.log("🌿 MariaDB PlantGo data synced successfully!");
   } catch (err) {
     state.backendConnected = false;
-    updateBackendStatusUI(false, "Offline mode (Could not reach MariaDB on port 5001)");
+    updateBackendStatusUI(false, "Offline mode (Could not reach MariaDB server)");
     console.warn("Backend unavailable, using local mock data:", err.message);
   }
 }
@@ -1666,7 +1670,7 @@ function initApp() {
       reconnectDbBtn.textContent = "Syncing...";
       await syncFromBackend();
       reconnectDbBtn.textContent = "Sync DB";
-      showToast(state.backendConnected ? "✓ Connected to MariaDB!" : "✕ Could not reach MariaDB on port 5001");
+      showToast(state.backendConnected ? "✓ Connected to MariaDB!" : "✕ Could not reach MariaDB server");
     };
   }
 
