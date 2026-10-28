@@ -1869,6 +1869,8 @@ async function handleAuthSubmit(e) {
 }
 
 const GOOGLE_CLIENT_ID = "REDACTED.apps.googleusercontent.com";
+// Native Android sign-in must use the web client from the same project as the Android OAuth clients (google-services.json)
+const GOOGLE_ANDROID_WEB_CLIENT_ID = "REDACTED.apps.googleusercontent.com";
 
 // Inside the Android app, Google's web button can't work (it navigates the WebView away),
 // so use the native Sign in with Google sheet via the SocialLogin plugin instead.
@@ -1885,7 +1887,7 @@ async function nativeGoogleSignIn() {
   if (!social) return;
   try {
     if (!nativeGoogleReady) {
-      nativeGoogleReady = social.initialize({ google: { webClientId: GOOGLE_CLIENT_ID } });
+      nativeGoogleReady = social.initialize({ google: { webClientId: GOOGLE_ANDROID_WEB_CLIENT_ID } });
     }
     await nativeGoogleReady;
     const res = await social.login({ provider: "google", options: { scopes: ["email", "profile"] } });
