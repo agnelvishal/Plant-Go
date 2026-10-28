@@ -341,6 +341,7 @@ function changeTab(tabName) {
   }
   if (tabName === 'profile') {
     updateProfileUI();
+    initGoogleAuth();
   }
 }
 
@@ -1904,6 +1905,7 @@ function openAuthModal() {
     if (authForm) authForm.style.display = 'flex';
     if (loggedInView) loggedInView.style.display = 'none';
     updateAuthModalMode();
+    initGoogleAuth();
   }
 
   if (overlay) {
@@ -2022,35 +2024,167 @@ async function handleAuthSubmit(e) {
   return false;
 }
 
+const GOOGLE_CLIENT_ID = "REDACTED.apps.googleusercontent.com";
+
+// Decode JWT token helper for Google credentials
+function parseJwt(token) {
+  try {
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map(c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
+function initGoogleAuth() {
+  if (typeof google !== "undefined" && google.accounts && google.accounts.id) {
+    google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: handleGoogleCredentialResponse,
+      auto_select: false,
+      cancel_on_tap_outside: true
+    });
+
+    // Render button inside Auth Modal
+    const modalBtnContainer = document.getElementById("google-signin-modal-btn");
+    if (modalBtnContainer) {
+      modalBtnContainer.innerHTML = "";
+      google.accounts.id.renderButton(modalBtnContainer, {
+        theme: "outline",
+        size: "large",
+        type: "standard",
+        text: "signin_with",
+        shape: "rectangular",
+        logo_alignment: "left",
+        width: 280
+      });
+    }
+
+    // Render button on Profile screen
+    const profileBtnContainer = document.getElementById("profile-google-btn-container");
+    if (profileBtnContainer) {
+      profileBtnContainer.innerHTML = "";
+      google.accounts.id.renderButton(profileBtnContainer, {
+        theme: "filled_blue",
+        size: "medium",
+        type: "standard",
+        text: "signin_with",
+        shape: "pill"
+      });
+    }
+  } else {
+    // Retry once if Google script is still asynchronously loading
+    setTimeout(initGoogleAuth, 500);
+  }
+}
+
+async function handleGoogleCredentialResponse(response) {
+  const idToken = response.credential;
+  if (!idToken) return;
+
+  const payload = parseJwt(idToken);
+  showToast("Verifying Google account...", "info");
+
+  let backendUser = null;
+  try {
+    const res = await fetchWithTimeout(API_BASE + "/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: idToken })
+    }, 8000);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.user) {
+        backendUser = data.user;
+      }
+    }
+  } catch (err) {
+    console.warn("Backend auth verification unavailable, continuing with client identity:", err);
+  }
+
+  const user = {
+    displayName: backendUser?.username || payload?.name || "Explorer",
+    email: backendUser?.email || payload?.email || "",
+    photoURL: backendUser?.avatar || payload?.picture || "",
+    id: backendUser?.id || payload?.sub || "google-user",
+    provider: "google"
+  };
+
+  // Sync state.userStats if backend provided them
+  if (backendUser) {
+    state.userStats.discoveredCount = backendUser.discoveredCount ?? state.userStats.discoveredCount;
+    state.userStats.reviewedCount = backendUser.reviewedCount ?? state.userStats.reviewedCount;
+    state.userStats.totalPoints = backendUser.totalPoints ?? state.userStats.totalPoints;
+    state.userStats.level = backendUser.level ?? state.userStats.level;
+    state.userStats.xp = backendUser.xp ?? state.userStats.xp;
+    state.userStats.xpToNext = backendUser.xpToNext ?? state.userStats.xpToNext;
+    state.userStats.milestoneAchieved = Boolean(backendUser.milestoneAchieved);
+    updateProfileUI();
+  }
+
+  currentUser = user;
+  localStorage.setItem("plantgo_saved_user", JSON.stringify(user));
+  updateAuthUI(user);
+  closeAuthModal();
+  showToast("Welcome, " + user.displayName + " ☘", "success");
+}
+
 async function handleAuthLogout() {
   try {
+    localStorage.removeItem("plantgo_saved_user");
+    currentUser = null;
     if (fbAuth) {
       await fbAuth.signOut();
-      showToast('Signed out of PlantGo', 'info');
-      closeAuthModal();
     }
+    updateAuthUI(null);
+    initGoogleAuth();
+    showToast("Signed out of PlantGo", "info");
+    closeAuthModal();
   } catch (err) {
     console.error("Sign out error:", err);
   }
 }
 
 function updateAuthUI(user) {
-  const label = document.getElementById('header-auth-label');
-  const icon = document.getElementById('header-auth-icon');
-  const headerBtn = document.getElementById('header-auth-btn');
-  const profileNameEl = document.querySelector('.profile-name');
+  const label = document.getElementById("header-auth-label");
+  const icon = document.getElementById("header-auth-icon");
+  const headerBtn = document.getElementById("header-auth-btn");
+  const profileNameEl = document.querySelector(".profile-name");
+  const profileAvatar = document.querySelector(".profile-avatar-large");
+  const profileUnauthCard = document.getElementById("profile-auth-unauth");
+  const profileLoggedCard = document.getElementById("profile-auth-logged");
+  const profileEmailTxt = document.getElementById("profile-google-email");
 
   if (user) {
-    const username = (user.email ? user.email.split('@')[0] : 'Explorer');
-    if (label) label.textContent = username;
-    if (icon) icon.textContent = '🌿';
-    if (headerBtn) headerBtn.classList.add('logged-in');
-    if (profileNameEl) profileNameEl.textContent = username;
+    const displayName = user.displayName || (user.email ? user.email.split("@")[0] : "Explorer");
+    if (label) label.textContent = displayName;
+    if (icon) icon.textContent = "🌿";
+    if (headerBtn) headerBtn.classList.add("logged-in");
+    if (profileNameEl) profileNameEl.textContent = displayName;
+    if (profileAvatar && user.photoURL) {
+      profileAvatar.style.backgroundImage = "url('" + user.photoURL + "')";
+    }
+    if (profileUnauthCard) profileUnauthCard.style.display = "none";
+    if (profileLoggedCard) profileLoggedCard.style.display = "flex";
+    if (profileEmailTxt) profileEmailTxt.textContent = user.email || displayName;
   } else {
-    if (label) label.textContent = 'Sign In';
-    if (icon) icon.textContent = '👤';
-    if (headerBtn) headerBtn.classList.remove('logged-in');
-    if (profileNameEl) profileNameEl.textContent = 'Explorer_Forest_9';
+    if (label) label.textContent = "Sign In";
+    if (icon) icon.textContent = "👤";
+    if (headerBtn) headerBtn.classList.remove("logged-in");
+    if (profileNameEl) profileNameEl.textContent = "Explorer_Forest_9";
+    if (profileAvatar) {
+      profileAvatar.style.backgroundImage = "url('assets/avatar_explorer.png')";
+    }
+    if (profileUnauthCard) profileUnauthCard.style.display = "flex";
+    if (profileLoggedCard) profileLoggedCard.style.display = "none";
   }
 }
 
@@ -2062,5 +2196,15 @@ window.handleAuthSubmit = handleAuthSubmit;
 window.handleAuthLogout = handleAuthLogout;
 window.initFirebaseAuth = initFirebaseAuth;
 
-// Initialize Firebase immediately on script evaluation
+// Restore saved user if present
+try {
+  const saved = localStorage.getItem("plantgo_saved_user");
+  if (saved) {
+    currentUser = JSON.parse(saved);
+    updateAuthUI(currentUser);
+  }
+} catch (e) {}
+
+// Initialize Firebase and Google Identity Services immediately
 initFirebaseAuth();
+initGoogleAuth();

@@ -12,6 +12,8 @@
   <!-- Firebase App & Auth SDK (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <!-- Google Identity Services SDK -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Leaflet JS (Bundled Locally - No SRI or CDN blocks) -->
   <script src="vendor/leaflet/leaflet.js"></script>
 </head>
@@ -209,6 +211,24 @@
                 </div>
                 <span class="profile-points-txt">XP points to Level 15: <span class="xp-indicator">2340/5000</span></span>
               </div>
+            </div>
+          </div>
+
+          <!-- Google Account Connection Card -->
+          <div class="profile-auth-status-card" id="profile-auth-status-card">
+            <div class="profile-auth-unauthenticated" id="profile-auth-unauth">
+              <div class="profile-auth-info">
+                <span class="profile-auth-title">Sign in with Google</span>
+                <span class="profile-auth-desc">Sync your botanical discoveries & rank across devices</span>
+              </div>
+              <div id="profile-google-btn-container" class="profile-google-btn-container"></div>
+            </div>
+            <div class="profile-auth-authenticated" id="profile-auth-logged" style="display: none;">
+              <div class="profile-auth-info">
+                <span class="profile-auth-badge">✓ Google Connected</span>
+                <span class="profile-auth-desc" id="profile-google-email">explorer@gmail.com</span>
+              </div>
+              <button type="button" class="btn-profile-signout" id="btn-profile-signout" onclick="handleAuthLogout()">Sign Out</button>
             </div>
           </div>
 
@@ -492,6 +512,12 @@
         <div id="auth-error-msg" class="auth-error-banner" style="display:none;"></div>
 
         <button type="submit" id="auth-submit-btn" class="auth-btn-primary">Sign In</button>
+
+        <div class="auth-divider">
+          <span>or</span>
+        </div>
+
+        <div id="google-signin-modal-btn" class="google-modal-btn-wrap"></div>
 
         <div class="auth-toggle-mode">
           <span id="auth-toggle-prompt">Don't have an account?</span>
