@@ -15,6 +15,9 @@ const LOCAL_EMULATOR_API_BASE = "http://10.0.2.2:5001/api";
 const LOCAL_LAN_API_BASE = "http://localhost:5001/api";
 const LOCAL_LOOPBACK_API_BASE = "http://127.0.0.1:5001/api";
 
+// Local dev servers are only offered in debug builds and the browser, never in Play Store releases
+const DEV_ENDPOINTS_ENABLED = !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) || Boolean(window.Capacitor.DEBUG);
+
 let API_BASE = CLOUD_API_BASE;
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
@@ -114,10 +117,12 @@ async function loadUserData() {
 async function syncFromBackend() {
   updateBackendStatusUI(false, "Connecting to MariaDB backend...", true);
 
-  const savedPreference = localStorage.getItem("plantgo_selected_api_base") || "auto";
+  const savedPreference = DEV_ENDPOINTS_ENABLED ? (localStorage.getItem("plantgo_selected_api_base") || "auto") : "auto";
   let candidateEndpoints = [];
 
-  if (savedPreference && savedPreference !== "auto") {
+  if (!DEV_ENDPOINTS_ENABLED) {
+    candidateEndpoints = [CLOUD_API_BASE];
+  } else if (savedPreference && savedPreference !== "auto") {
     candidateEndpoints = [savedPreference];
   } else {
     // In Android runtime (Capacitor), prioritize Cloud then Android emulator / LAN / loopback
@@ -1009,12 +1014,13 @@ async function requestAndLaunchNativeCamera(source = "camera") {
 
   try {
     // 1. Check and request permission on Capacitor Camera API
-    if (typeof nativeCam.checkPermissions === 'function') {
+    // The gallery uses the system photo picker, which needs no permission
+    if (source === "camera" && typeof nativeCam.checkPermissions === 'function') {
       try {
         const perm = await nativeCam.checkPermissions();
         if (perm && perm.camera !== 'granted') {
           if (typeof nativeCam.requestPermissions === 'function') {
-            const req = await nativeCam.requestPermissions({ permissions: ['camera', 'photos'] });
+            const req = await nativeCam.requestPermissions({ permissions: ['camera'] });
             if (req && req.camera !== 'granted') {
               showPermissionDeniedDialog(
                 "Camera",
@@ -1567,7 +1573,9 @@ function initApp() {
 
   // MariaDB Manual Reconnect Button & Endpoint Selector
   const backendSelect = document.getElementById("setting-backend-select");
-  if (backendSelect) {
+  if (backendSelect && !DEV_ENDPOINTS_ENABLED) {
+    backendSelect.parentElement.style.display = "none";
+  } else if (backendSelect) {
     const saved = localStorage.getItem("plantgo_selected_api_base") || "auto";
     backendSelect.value = saved;
     backendSelect.addEventListener("change", async (e) => {
@@ -2049,6 +2057,26 @@ async function handleAuthLogout() {
   }
 }
 
+// Permanently deletes the account and all its data on the server, then signs out
+async function handleDeleteAccount() {
+  const ok = window.confirm(
+    "Delete your PlantGo account?\n\nThis permanently removes your profile, XP, sightings, photos and vouches. This cannot be undone."
+  );
+  if (!ok) return;
+  try {
+    const res = await apiFetch("/account", { method: "DELETE" }, 15000);
+    if (!res.ok) {
+      const data = await res.json().catch(() => null);
+      throw new Error((data && data.error) || "Server error " + res.status);
+    }
+    await handleAuthLogout();
+    showToast("Your account and data have been deleted");
+  } catch (err) {
+    console.error("Delete account error:", err);
+    showToast("Could not delete account: " + err.message, "error");
+  }
+}
+
 function updateAuthUI(user) {
   const label = document.getElementById("header-auth-label");
   const icon = document.getElementById("header-auth-icon");
@@ -2058,6 +2086,7 @@ function updateAuthUI(user) {
   const profileUnauthCard = document.getElementById("profile-auth-unauth");
   const profileLoggedCard = document.getElementById("profile-auth-logged");
   const profileEmailTxt = document.getElementById("profile-google-email");
+  const deleteAccountBtn = document.getElementById("btn-delete-account");
 
   if (user) {
     const displayName = user.displayName || (user.email ? user.email.split("@")[0] : "Explorer");
@@ -2070,6 +2099,7 @@ function updateAuthUI(user) {
     }
     if (profileUnauthCard) profileUnauthCard.style.display = "none";
     if (profileLoggedCard) profileLoggedCard.style.display = "flex";
+    if (deleteAccountBtn) deleteAccountBtn.style.display = "block";
     if (profileEmailTxt) profileEmailTxt.textContent = user.email || displayName;
     const authBadge = document.getElementById("profile-auth-badge");
     if (authBadge) authBadge.textContent = user.provider === "google" ? "✓ Google Connected" : "✓ Signed in with email";
@@ -2083,6 +2113,7 @@ function updateAuthUI(user) {
     }
     if (profileUnauthCard) profileUnauthCard.style.display = "flex";
     if (profileLoggedCard) profileLoggedCard.style.display = "none";
+    if (deleteAccountBtn) deleteAccountBtn.style.display = "none";
   }
 }
 
@@ -2092,6 +2123,7 @@ window.closeAuthModal = closeAuthModal;
 window.toggleAuthMode = toggleAuthMode;
 window.handleAuthSubmit = handleAuthSubmit;
 window.handleAuthLogout = handleAuthLogout;
+window.handleDeleteAccount = handleDeleteAccount;
 window.initFirebaseAuth = initFirebaseAuth;
 
 // Restore saved user only when a backend session exists (older versions stored users without one)

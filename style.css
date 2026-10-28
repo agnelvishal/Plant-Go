@@ -2233,6 +2233,17 @@ body {
   background: rgba(211, 47, 47, 0.15);
 }
 
+.btn-delete-account {
+  display: block;
+  margin: 8px auto 0;
+  background: none;
+  border: none;
+  color: #d32f2f;
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .auth-divider {
   display: flex;
   align-items: center;
