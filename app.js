@@ -124,6 +124,9 @@ const state = {
     selectedOrgan: "auto",
   map: null,
   userMarker: null,
+  accuracyCircle: null,
+  currentLocation: null,
+  radarAnchoredToUser: false,
   mapInitialized: false,
   locationWatcher: null,
   mapMarkers: [],
@@ -266,8 +269,14 @@ function changeTab(tabName) {
   });
 
   // Screen specific initializers
-  if (tabName === 'map' && !state.mapInitialized) {
-    initMap();
+  if (tabName === 'map') {
+    if (!state.mapInitialized) {
+      initMap();
+    } else if (state.map) {
+      setTimeout(() => {
+        state.map.invalidateSize();
+      }, 150);
+    }
   }
   if (tabName === 'ai-identify') {
     initCameraFlow();
@@ -330,64 +339,83 @@ function showPermissionDeniedDialog(permissionName, onGrant, onGallery) {
   };
 }
 
-// --- MAP IMPLEMENTATION (Leaflet) ---
+// --- MAP IMPLEMENTATION (OpenStreetMap + Leaflet) ---
 
 function initMap() {
   if (state.mapInitialized) return;
 
-  // 1. Request Location Permission & Start GPS
-  checkAndRequestLocationPermission();
+  const mapElement = document.getElementById('map');
+  if (!mapElement || typeof L === 'undefined') {
+    console.warn('Leaflet or #map element not ready yet.');
+    return;
+  }
+
+  // 1. Initialize Leaflet Map with OpenStreetMap raster tiles
+  // Default fallback center or user's position
+  const initialCenter = state.currentLocation ? [state.currentLocation.lat, state.currentLocation.lng] : [20.0, 0.0];
+  const initialZoom = state.currentLocation ? 16 : 3;
+
+  state.map = L.map('map', { 
+    zoomControl: false,
+    attributionControl: true
+  }).setView(initialCenter, initialZoom);
   
-  // 2. Initialize Leaflet Map
-  state.map = L.map('map', { zoomControl: false }).setView([20.0, 0.0], 16);
-  
+  // Standard Free OpenStreetMap Tile Layer
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
-    attribution: '© OpenStreetMap'
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
   }).addTo(state.map);
 
-  state.userMarker = L.circleMarker([20.0, 0.0], { 
-    radius: 9, 
-    color: '#ffffff',
-    weight: 3,
-    fillColor: '#2196f3', 
-    fillOpacity: 1 
-  }).addTo(state.map);
+  // Reposition attribution cleanly
+  if (state.map.attributionControl) {
+    state.map.attributionControl.setPosition('bottomright');
+  }
 
+  // Attach controls & UI
   addMapControls();
   renderMapPlantMarkers();
   state.mapInitialized = true;
+
+  // Window resize handler for tile realignment
+  window.addEventListener('resize', () => {
+    if (state.map) state.map.invalidateSize();
+  });
+
+  // 2. Request Location Permission & Start GPS Tracking
+  checkAndRequestLocationPermission(false);
 }
 
 function addMapControls() {
   const mapContainer = document.querySelector('.map-canvas-container');
+  if (!mapContainer) return;
   
   // Recenter GPS Button
   const recenterBtn = document.createElement('button');
+  recenterBtn.type = 'button';
   recenterBtn.innerHTML = '📍';
   recenterBtn.className = 'map-fab-btn';
-  recenterBtn.title = 'Recenter GPS';
-  recenterBtn.style.position = 'absolute';
-  recenterBtn.style.bottom = '24px';
-  recenterBtn.style.left = '12px';
-  recenterBtn.style.zIndex = '1000';
+  recenterBtn.title = 'Recenter on My Location';
+  recenterBtn.style.bottom = '110px';
+  recenterBtn.style.left = '14px';
   recenterBtn.onclick = () => {
-    if (state.userMarker) {
-      state.map.setView(state.userMarker.getLatLng(), 16);
-      showToast('📍 Recentered to your GPS coordinates');
+    if (state.currentLocation) {
+      state.map.flyTo([state.currentLocation.lat, state.currentLocation.lng], 16, { animate: true, duration: 1.0 });
+      showToast('📍 Recentered to your current GPS position');
+    } else {
+      showToast('🛰️ Requesting current location...');
+      checkAndRequestLocationPermission(true);
     }
   };
   mapContainer.appendChild(recenterBtn);
   
   // Heatmap Toggle Button
   const heatmapBtn = document.createElement('button');
+  heatmapBtn.type = 'button';
   heatmapBtn.innerHTML = '🔥';
   heatmapBtn.className = 'map-fab-btn';
-  heatmapBtn.title = 'Density Heatmap';
-  heatmapBtn.style.position = 'absolute';
-  heatmapBtn.style.bottom = '76px';
-  heatmapBtn.style.left = '12px';
-  heatmapBtn.style.zIndex = '1000';
+  heatmapBtn.title = 'Botanical Density Heatmap';
+  heatmapBtn.style.bottom = '165px';
+  heatmapBtn.style.left = '14px';
   heatmapBtn.onclick = () => {
     heatmapBtn.classList.toggle('active');
     const isActive = heatmapBtn.classList.contains('active');
@@ -429,74 +457,252 @@ function renderMapPlantMarkers() {
   plants.forEach(plant => {
     const customIcon = L.divIcon({
       className: 'custom-plant-pin',
-      html: '<div style="background:var(--primary); color:white; border-radius:50%; width:34px; height:34px; display:flex; align-items:center; justify-content:center; box-shadow:0 3px 8px rgba(0,0,0,0.3); border:2px solid white; font-size:16px; cursor:pointer;">☘</div>',
-      iconSize: [34, 34],
-      iconAnchor: [17, 17]
+      html: `
+        <div style="background:var(--primary, #2e7d32); color:white; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.35); border:2.5px solid white; font-size:18px; cursor:pointer;" title="${plant.name}">
+          🌿
+        </div>
+      `,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18],
+      popupAnchor: [0, -20]
     });
 
     const marker = L.marker([plant.lat, plant.lng], { icon: customIcon }).addTo(state.map);
-    marker.on('click', () => {
-      openSpecimenDetails(plant);
-    });
+    
+    // Bind interactive specimen popup
+    marker.bindPopup(`
+      <div style="font-family: inherit; font-size: 13px; min-width: 140px; padding: 6px 4px; text-align: center;">
+        <strong style="color: var(--primary, #2e7d32); font-size: 14px; display: block; margin-bottom: 2px;">${plant.name}</strong>
+        <span style="font-style: italic; color: #666; font-size: 11px; display: block; margin-bottom: 8px;">${plant.scientific}</span>
+        <button type="button" onclick="openSpecimenDetailsById('${plant.id}')" style="background: var(--primary, #2e7d32); color: white; border: none; padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">Inspect Specimen 🔍</button>
+      </div>
+    `);
+
     state.mapMarkers.push(marker);
   });
 }
 
-async function checkAndRequestLocationPermission() {
-  if (!Geolocation) {
-    // Web fallback for location
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((pos) => {
-        const latLng = [pos.coords.latitude, pos.coords.longitude];
-        if (state.userMarker) state.userMarker.setLatLng(latLng);
-        if (state.map) state.map.setView(latLng, 16);
-      }, (err) => console.log('Browser geolocation fallback notice:', err));
+// --- GPS LOCATION & PERMISSION MANAGEMENT ---
+
+function updateGpsStatusBadge(status, text) {
+  const pill = document.getElementById('gps-status-pill');
+  const label = document.getElementById('gps-status-text');
+  if (!pill) return;
+  pill.classList.remove('active', 'denied');
+  if (status === 'active') pill.classList.add('active');
+  if (status === 'denied') pill.classList.add('denied');
+  if (label && text) label.textContent = text;
+}
+
+function showLocationPermissionBanner() {
+  const banner = document.getElementById('map-location-banner');
+  if (banner) banner.style.display = 'flex';
+}
+
+function hideLocationBanner() {
+  const banner = document.getElementById('map-location-banner');
+  if (banner) banner.style.display = 'none';
+}
+
+function handleUserLocationSuccess(lat, lng, accuracy, autoFly = false) {
+  state.currentLocation = { lat, lng, accuracy };
+
+  if (!state.map) return;
+
+  const latLng = [lat, lng];
+
+  // 1. Create or update User Pulsing Beacon
+  if (!state.userMarker) {
+    const beaconIcon = L.divIcon({
+      className: 'user-location-marker-container',
+      html: `
+        <div class="user-location-beacon">
+          <div class="user-location-pulse"></div>
+          <div class="user-location-dot"></div>
+        </div>
+      `,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
+    });
+    state.userMarker = L.marker(latLng, { icon: beaconIcon, zIndexOffset: 1000 }).addTo(state.map);
+    state.userMarker.bindTooltip("You are here", { direction: 'top', offset: [0, -12] });
+  } else {
+    state.userMarker.setLatLng(latLng);
+  }
+
+  // 2. Create or update GPS Accuracy Circle
+  const radius = Math.min(Math.max(accuracy || 25, 15), 250);
+  if (!state.accuracyCircle) {
+    state.accuracyCircle = L.circle(latLng, {
+      radius: radius,
+      color: '#2196f3',
+      weight: 1,
+      fillColor: '#2196f3',
+      fillOpacity: 0.12
+    }).addTo(state.map);
+  } else {
+    state.accuracyCircle.setLatLng(latLng);
+    state.accuracyCircle.setRadius(radius);
+  }
+
+  // 3. Smooth flyTo on first location acquisition or recenter
+  if (autoFly) {
+    state.map.flyTo(latLng, 16, { animate: true, duration: 1.2 });
+  }
+
+  // 4. Update UI Statuses
+  hideLocationBanner();
+  updateGpsStatusBadge('active', 'GPS Active 📍');
+
+  // 5. Anchor radar specimens around user coordinates so user sees nearby flora
+  anchorRadarPlantsToUser(lat, lng);
+}
+
+function anchorRadarPlantsToUser(userLat, userLng) {
+  if (state.radarAnchoredToUser) return;
+  state.radarAnchoredToUser = true;
+
+  const plantOffsets = [
+    { dLat: 0.0016, dLng: 0.0018, dist: '180m away' },
+    { dLat: -0.0014, dLng: 0.0022, dist: '240m away' },
+    { dLat: 0.0022, dLng: -0.0019, dist: '310m away' },
+    { dLat: -0.0020, dLng: -0.0015, dist: '290m away' },
+    { dLat: 0.0008, dLng: -0.0024, dist: '210m away' }
+  ];
+
+  if (state.radarPlants && state.radarPlants.length > 0) {
+    state.radarPlants.forEach((p, idx) => {
+      const off = plantOffsets[idx % plantOffsets.length];
+      p.lat = userLat + off.dLat;
+      p.lng = userLng + off.dLng;
+      p.dist = off.dist;
+    });
+    renderMapPlantMarkers();
+    renderRadarList();
+  }
+}
+
+async function checkAndRequestLocationPermission(userInitiated = false) {
+  updateGpsStatusBadge('locating', 'Acquiring GPS...');
+
+  // --- A. NATIVE CAPACITOR (Android runtime) ---
+  if (isCapacitorNative() && Geolocation) {
+    try {
+      let permission = await Geolocation.checkPermissions();
+      if (permission.location !== 'granted') {
+        permission = await Geolocation.requestPermissions();
+      }
+
+      if (permission.location === 'granted') {
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: state.settings.highAccuracyGps,
+          timeout: 12000,
+          maximumAge: 0
+        });
+        if (pos && pos.coords) {
+          handleUserLocationSuccess(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true);
+        }
+        startLocationWatch();
+      } else {
+        updateGpsStatusBadge('denied', 'Location Permission Denied');
+        showLocationPermissionBanner();
+        if (userInitiated) {
+          showPermissionDeniedDialog('Location', () => checkAndRequestLocationPermission(true));
+        }
+      }
+    } catch (e) {
+      console.warn('Native geolocation request failed:', e);
+      updateGpsStatusBadge('denied', 'GPS Unavailable');
+      showLocationPermissionBanner();
     }
     return;
   }
 
-  try {
-    const permission = await Geolocation.checkPermissions();
-    if (permission.location === 'granted') {
-      startLocationWatch();
-    } else {
-      const result = await Geolocation.requestPermissions();
-      if (result.location === 'granted') {
+  // --- B. WEB BROWSER RUNTIME (localhost:3000 / mobile browser) ---
+  if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        handleUserLocationSuccess(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true);
         startLocationWatch();
-      } else {
-        showPermissionDeniedDialog('Location', checkAndRequestLocationPermission);
+      },
+      (err) => {
+        console.warn('Web Geolocation error:', err);
+        let msg = 'Location Access Denied';
+        if (err.code === 1) msg = 'Permission Denied';
+        else if (err.code === 2) msg = 'Location Unavailable';
+        else if (err.code === 3) msg = 'Request Timed Out';
+
+        updateGpsStatusBadge('denied', msg + ' - Tap to Retry');
+        showLocationPermissionBanner();
+        if (userInitiated && err.code === 1) {
+          showToast('📍 Location blocked. Please allow location access in your browser site settings.');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
       }
-    }
-  } catch (e) {
-    showPermissionDeniedDialog('Location', checkAndRequestLocationPermission);
+    );
+  } else {
+    updateGpsStatusBadge('denied', 'Geolocation Not Supported');
+    showToast('Geolocation is not supported by this browser.');
   }
 }
 
 function startLocationWatch() {
-  if (state.locationWatcher || !Geolocation) return;
-  
-  try {
-    state.locationWatcher = Geolocation.watchPosition({
-      enableHighAccuracy: state.settings.highAccuracyGps,
-      timeout: 20000,
-      maximumAge: 0
-    }, (position, err) => {
-      if (err) {
-        console.error('Location Watch Error:', err);
-        return;
-      }
-      if (position && position.coords) {
-        const latLng = [position.coords.latitude, position.coords.longitude];
-        if (state.userMarker) state.userMarker.setLatLng(latLng);
-        if (state.map && state.map.getZoom() < 10) {
-          state.map.setView(latLng, 16);
+  if (state.locationWatcher) return;
+
+  // Native Capacitor watch
+  if (isCapacitorNative() && Geolocation) {
+    try {
+      Geolocation.watchPosition(
+        {
+          enableHighAccuracy: state.settings.highAccuracyGps,
+          timeout: 20000,
+          maximumAge: 5000
+        },
+        (position, err) => {
+          if (err) {
+            console.warn('Native location watch error:', err);
+            return;
+          }
+          if (position && position.coords) {
+            handleUserLocationSuccess(position.coords.latitude, position.coords.longitude, position.coords.accuracy, false);
+          }
         }
-      }
-    });
-  } catch (err) {
-    console.warn('Geolocation watcher could not start:', err);
+      ).then(id => {
+        state.locationWatcher = id;
+      });
+    } catch (err) {
+      console.warn('Native Geolocation watch error:', err);
+    }
+    return;
+  }
+
+  // Web Browser watch
+  if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+    try {
+      state.locationWatcher = navigator.geolocation.watchPosition(
+        (pos) => {
+          handleUserLocationSuccess(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, false);
+        },
+        (err) => {
+          console.warn('Web location watch error:', err);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 5000
+        }
+      );
+    } catch (err) {
+      console.warn('Web Geolocation watch error:', err);
+    }
   }
 }
+
+window.checkAndRequestLocationPermission = checkAndRequestLocationPermission;
 
 // --- CAPTURE & IDENTIFICATION WORKFLOW (Pl@ntNet AI) ---
 

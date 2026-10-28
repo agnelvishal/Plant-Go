@@ -65,6 +65,24 @@
             <button class="map-filter-chip" data-filter="rare">Rare & Endangered</button>
           </div>
 
+          <!-- Location Permission / Status Banner -->
+          <div id="map-location-banner" class="map-location-banner" style="display:none;">
+            <div class="banner-content">
+              <span class="banner-icon">📍</span>
+              <div class="banner-text">
+                <span class="banner-title">Location Access Needed</span>
+                <span class="banner-sub">Enable GPS to view nearby plants and locate yourself on OpenStreetMap</span>
+              </div>
+            </div>
+            <button type="button" class="banner-action-btn" onclick="checkAndRequestLocationPermission(true)">Allow Location</button>
+          </div>
+
+          <!-- GPS Status Floating Pill -->
+          <button type="button" id="gps-status-pill" class="gps-status-pill" onclick="checkAndRequestLocationPermission(true)" title="GPS Status - Tap to locate/recenter">
+            <span class="gps-dot"></span>
+            <span id="gps-status-text">Acquiring GPS...</span>
+          </button>
+
           <!-- Vector Map Canvas (Replaced with Leaflet Map) -->
           <div id="map"></div>
 
@@ -494,7 +512,7 @@
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=2.5"></script>
+  <script src="app.js?v=2.6"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>

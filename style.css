@@ -189,7 +189,7 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  z-index: 10;
+  z-index: 500;
 }
 
 .map-search-bar input {
@@ -212,7 +212,7 @@ body {
   gap: 8px;
   overflow-x: auto;
   white-space: nowrap;
-  z-index: 10;
+  z-index: 500;
   scrollbar-width: none; /* Hide firefox scrollbar */
 }
 
@@ -1959,4 +1959,214 @@ body {
 }
 .live-shutter-btn:hover .live-shutter-inner {
   background: linear-gradient(135deg, #66bb6a, #388e3c);
+}
+
+
+/* --- OPENSTREETMAP & GPS LOCATION UI ENHANCEMENTS --- */
+.gps-status-pill {
+  position: absolute;
+  top: 114px;
+  right: 12px;
+  background: var(--bg-card);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+  z-index: 500;
+  cursor: pointer;
+  color: var(--text-primary);
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.gps-status-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22);
+}
+.gps-status-pill:active {
+  transform: translateY(0);
+}
+.gps-status-pill .gps-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fbc02d;
+  box-shadow: 0 0 6px rgba(251, 192, 45, 0.6);
+  transition: all 0.3s ease;
+}
+.gps-status-pill.active .gps-dot {
+  background: #2e7d32;
+  box-shadow: 0 0 8px rgba(46, 125, 50, 0.75);
+}
+.gps-status-pill.denied .gps-dot {
+  background: #d32f2f;
+  box-shadow: 0 0 8px rgba(211, 47, 47, 0.75);
+}
+
+.map-location-banner {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  background: linear-gradient(135deg, #1b382b 0%, #204e38 100%);
+  color: #ffffff;
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(129, 199, 132, 0.35);
+  z-index: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: slideDownBanner 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes slideDownBanner {
+  from { opacity: 0; transform: translateY(-12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.map-location-banner .banner-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.map-location-banner .banner-icon {
+  font-size: 1.3rem;
+  line-height: 1;
+}
+.map-location-banner .banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.map-location-banner .banner-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #e8f5e9;
+}
+.map-location-banner .banner-sub {
+  font-size: 0.74rem;
+  color: #c8e6c9;
+  line-height: 1.35;
+}
+.map-location-banner .banner-action-btn {
+  align-self: flex-end;
+  background: #4caf50;
+  color: #ffffff;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 16px;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s ease;
+}
+.map-location-banner .banner-action-btn:hover {
+  background: #388e3c;
+  transform: scale(1.03);
+}
+
+/* User Location GPS Beacon */
+.user-location-marker-container {
+  background: transparent !important;
+  border: none !important;
+}
+.user-location-beacon {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.user-location-dot {
+  position: relative;
+  z-index: 2;
+  width: 14px;
+  height: 14px;
+  background: #1976d2;
+  border: 3px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.user-location-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(33, 150, 243, 0.45);
+  animation: user-gps-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  z-index: 1;
+}
+@keyframes user-gps-ping {
+  0% { transform: scale(0.5); opacity: 0.9; }
+  75% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* Map FAB Buttons (Recenter / Heatmap) */
+.map-fab-btn {
+  position: absolute;
+  z-index: 500;
+  width: 44px;
+  height: 44px;
+  background: var(--bg-card);
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+.map-fab-btn:hover {
+  transform: scale(1.08);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+.map-fab-btn:active {
+  transform: scale(0.95);
+}
+.map-fab-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+/* Plant Marker Pins & Leaflet Popups */
+.custom-plant-pin {
+  background: transparent !important;
+  border: none !important;
+  transition: transform 0.2s ease;
+}
+.custom-plant-pin:hover {
+  transform: scale(1.18);
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25) !important;
+  background: var(--bg-card, #ffffff) !important;
+  color: var(--text-primary, #212121) !important;
+  padding: 2px !important;
+}
+.leaflet-popup-tip {
+  background: var(--bg-card, #ffffff) !important;
+}
+.leaflet-control-attribution {
+  font-size: 10px !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(4px) !important;
+  padding: 3px 8px !important;
+  border-radius: 4px 0 0 0 !important;
 }
