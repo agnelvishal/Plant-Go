@@ -341,45 +341,80 @@ function showPermissionDeniedDialog(permissionName, onGrant, onGallery) {
 
 // --- MAP IMPLEMENTATION (OpenStreetMap + Leaflet) ---
 
-function initMap() {
+function getCapacitorGeolocation() {
+  if (typeof window !== 'undefined' && window.Capacitor) {
+    if (window.Capacitor.Plugins && window.Capacitor.Plugins.Geolocation) {
+      return window.Capacitor.Plugins.Geolocation;
+    }
+    if (typeof window.Capacitor.registerPlugin === 'function') {
+      try {
+        return window.Capacitor.registerPlugin('Geolocation');
+      } catch (e) {}
+    }
+  }
+  return null;
+}
+
+function initMap(retryCount = 0) {
   if (state.mapInitialized) return;
 
   const mapElement = document.getElementById('map');
-  if (!mapElement || typeof L === 'undefined') {
-    console.warn('Leaflet or #map element not ready yet.');
+  if (!mapElement) {
+    if (retryCount < 10) setTimeout(() => initMap(retryCount + 1), 150);
     return;
   }
 
-  // 1. Initialize Leaflet Map with OpenStreetMap raster tiles
-  // Default fallback center or user's position
-  const initialCenter = state.currentLocation ? [state.currentLocation.lat, state.currentLocation.lng] : [20.0, 0.0];
-  const initialZoom = state.currentLocation ? 16 : 3;
-
-  state.map = L.map('map', { 
-    zoomControl: false,
-    attributionControl: true
-  }).setView(initialCenter, initialZoom);
-  
-  // Standard Free OpenStreetMap Tile Layer
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
-  }).addTo(state.map);
-
-  // Reposition attribution cleanly
-  if (state.map.attributionControl) {
-    state.map.attributionControl.setPosition('bottomright');
+  // Ensure Leaflet library is ready
+  if (typeof L === 'undefined') {
+    if (retryCount < 20) {
+      setTimeout(() => initMap(retryCount + 1), 150);
+      return;
+    }
+    console.error('Leaflet library failed to load.');
+    updateGpsStatusBadge('denied', 'Map Offline');
+    return;
   }
 
-  // Attach controls & UI
-  addMapControls();
-  renderMapPlantMarkers();
-  state.mapInitialized = true;
+  try {
+    // 1. Initialize Leaflet Map with OpenStreetMap raster tiles
+    const initialCenter = state.currentLocation 
+      ? [state.currentLocation.lat, state.currentLocation.lng] 
+      : [12.9716, 77.5946];
+    const initialZoom = state.currentLocation ? 16 : 13;
 
-  // Window resize handler for tile realignment
-  window.addEventListener('resize', () => {
-    if (state.map) state.map.invalidateSize();
-  });
+    state.map = L.map('map', { 
+      zoomControl: false,
+      attributionControl: true
+    }).setView(initialCenter, initialZoom);
+    
+    // Standard Free OpenStreetMap Tile Layer
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'
+    }).addTo(state.map);
+
+    if (state.map.attributionControl) {
+      state.map.attributionControl.setPosition('bottomright');
+    }
+
+    // Attach controls & UI
+    addMapControls();
+    renderMapPlantMarkers();
+    state.mapInitialized = true;
+
+    // Window resize handler for tile realignment
+    window.addEventListener('resize', () => {
+      if (state.map) state.map.invalidateSize();
+    });
+
+    // Invalidate container size after mount
+    setTimeout(() => {
+      if (state.map) state.map.invalidateSize();
+    }, 200);
+
+  } catch (err) {
+    console.error('Error during initMap:', err);
+  }
 
   // 2. Request Location Permission & Start GPS Tracking
   checkAndRequestLocationPermission(false);
@@ -443,7 +478,7 @@ function addMapControls() {
 }
 
 function renderMapPlantMarkers() {
-  if (!state.map) return;
+  if (!state.map || typeof L === 'undefined') return;
 
   // Clear existing markers
   state.mapMarkers.forEach(m => state.map.removeLayer(m));
@@ -507,7 +542,7 @@ function hideLocationBanner() {
 function handleUserLocationSuccess(lat, lng, accuracy, autoFly = false) {
   state.currentLocation = { lat, lng, accuracy };
 
-  if (!state.map) return;
+  if (!state.map || typeof L === 'undefined') return;
 
   const latLng = [lat, lng];
 
@@ -582,70 +617,133 @@ function anchorRadarPlantsToUser(userLat, userLng) {
   }
 }
 
+let gpsWatchdogTimer = null;
+let isLocating = false;
+
 async function checkAndRequestLocationPermission(userInitiated = false) {
+  if (isLocating && !userInitiated) return;
+  isLocating = true;
+
   updateGpsStatusBadge('locating', 'Acquiring GPS...');
 
+  if (gpsWatchdogTimer) clearTimeout(gpsWatchdogTimer);
+  gpsWatchdogTimer = setTimeout(() => {
+    if (!state.currentLocation) {
+      updateGpsStatusBadge('denied', 'Tap to Retry GPS 📍');
+      showLocationPermissionBanner();
+      anchorRadarPlantsToUser(12.9716, 77.5946);
+    }
+    isLocating = false;
+  }, 8000);
+
+  const nativeGeo = getCapacitorGeolocation();
+
   // --- A. NATIVE CAPACITOR (Android runtime) ---
-  if (isCapacitorNative() && Geolocation) {
+  if (isCapacitorNative() && nativeGeo) {
     try {
-      let permission = await Geolocation.checkPermissions();
+      let permission = await nativeGeo.checkPermissions();
       if (permission.location !== 'granted') {
-        permission = await Geolocation.requestPermissions();
+        permission = await nativeGeo.requestPermissions();
       }
 
       if (permission.location === 'granted') {
-        const pos = await Geolocation.getCurrentPosition({
-          enableHighAccuracy: state.settings.highAccuracyGps,
-          timeout: 12000,
-          maximumAge: 0
-        });
-        if (pos && pos.coords) {
-          handleUserLocationSuccess(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true);
+        // Fast location retrieval
+        try {
+          const pos = await nativeGeo.getCurrentPosition({
+            enableHighAccuracy: false,
+            timeout: 5000,
+            maximumAge: 60000
+          });
+          if (pos && pos.coords) {
+            clearTimeout(gpsWatchdogTimer);
+            handleUserLocationSuccess(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true);
+          }
+        } catch (fastErr) {
+          console.warn('Fast native location failed, proceeding to high accuracy watch:', fastErr);
         }
+
         startLocationWatch();
+        isLocating = false;
+        return;
       } else {
+        clearTimeout(gpsWatchdogTimer);
+        isLocating = false;
         updateGpsStatusBadge('denied', 'Location Permission Denied');
         showLocationPermissionBanner();
+        anchorRadarPlantsToUser(12.9716, 77.5946);
         if (userInitiated) {
           showPermissionDeniedDialog('Location', () => checkAndRequestLocationPermission(true));
         }
+        return;
       }
     } catch (e) {
-      console.warn('Native geolocation request failed:', e);
-      updateGpsStatusBadge('denied', 'GPS Unavailable');
-      showLocationPermissionBanner();
+      console.warn('Native geolocation check failed:', e);
+      if (e && e.message && e.message.includes('Location services are not enabled')) {
+        clearTimeout(gpsWatchdogTimer);
+        isLocating = false;
+        updateGpsStatusBadge('denied', 'Please Enable Device GPS');
+        showToast('⚠️ Please turn on Location (GPS) in your Android quick settings.');
+        anchorRadarPlantsToUser(12.9716, 77.5946);
+        return;
+      }
+      // If native fails, continue to web fallback below
     }
-    return;
   }
 
   // --- B. WEB BROWSER RUNTIME (localhost:3000 / mobile browser) ---
   if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+    // 1. Fast position fetch with enableHighAccuracy: false (immediate resolution on desktop/laptops)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        clearTimeout(gpsWatchdogTimer);
+        isLocating = false;
         handleUserLocationSuccess(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true);
         startLocationWatch();
       },
-      (err) => {
-        console.warn('Web Geolocation error:', err);
-        let msg = 'Location Access Denied';
-        if (err.code === 1) msg = 'Permission Denied';
-        else if (err.code === 2) msg = 'Location Unavailable';
-        else if (err.code === 3) msg = 'Request Timed Out';
+      (fastErr) => {
+        console.warn('Quick position failed, trying high accuracy...', fastErr);
+        // 2. High accuracy fallback
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            clearTimeout(gpsWatchdogTimer);
+            isLocating = false;
+            handleUserLocationSuccess(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy, true);
+            startLocationWatch();
+          },
+          (err) => {
+            clearTimeout(gpsWatchdogTimer);
+            isLocating = false;
+            console.warn('Web Geolocation error:', err);
+            let msg = 'Location Access Denied';
+            if (err.code === 1) msg = 'Permission Denied';
+            else if (err.code === 2) msg = 'Location Unavailable';
+            else if (err.code === 3) msg = 'Tap to Retry GPS 📍';
 
-        updateGpsStatusBadge('denied', msg + ' - Tap to Retry');
-        showLocationPermissionBanner();
-        if (userInitiated && err.code === 1) {
-          showToast('📍 Location blocked. Please allow location access in your browser site settings.');
-        }
+            updateGpsStatusBadge('denied', msg);
+            showLocationPermissionBanner();
+            anchorRadarPlantsToUser(12.9716, 77.5946);
+            if (userInitiated && err.code === 1) {
+              showToast('📍 Location blocked. Please allow location in your browser site settings.');
+            }
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 6000,
+            maximumAge: 15000
+          }
+        );
       },
       {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
+        enableHighAccuracy: false,
+        timeout: 4000,
+        maximumAge: 60000
       }
     );
   } else {
+    clearTimeout(gpsWatchdogTimer);
+    isLocating = false;
     updateGpsStatusBadge('denied', 'Geolocation Not Supported');
+    anchorRadarPlantsToUser(12.9716, 77.5946);
     showToast('Geolocation is not supported by this browser.');
   }
 }
@@ -653,13 +751,15 @@ async function checkAndRequestLocationPermission(userInitiated = false) {
 function startLocationWatch() {
   if (state.locationWatcher) return;
 
+  const nativeGeo = getCapacitorGeolocation();
+
   // Native Capacitor watch
-  if (isCapacitorNative() && Geolocation) {
+  if (isCapacitorNative() && nativeGeo) {
     try {
-      Geolocation.watchPosition(
+      nativeGeo.watchPosition(
         {
           enableHighAccuracy: state.settings.highAccuracyGps,
-          timeout: 20000,
+          timeout: 15000,
           maximumAge: 5000
         },
         (position, err) => {
@@ -673,6 +773,8 @@ function startLocationWatch() {
         }
       ).then(id => {
         state.locationWatcher = id;
+      }).catch(err => {
+        console.warn('Native watchPosition failed to start:', err);
       });
     } catch (err) {
       console.warn('Native Geolocation watch error:', err);
@@ -692,7 +794,7 @@ function startLocationWatch() {
         },
         {
           enableHighAccuracy: true,
-          timeout: 20000,
+          timeout: 15000,
           maximumAge: 5000
         }
       );
@@ -944,19 +1046,20 @@ function renderCameraControls(mode) {
 }
 
 async function requestAndLaunchNativeCamera(source = "camera") {
-  if (!Camera) {
+  const nativeCam = (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Camera) ? window.Capacitor.Plugins.Camera : Camera;
+  if (!nativeCam) {
     triggerWebFileInput();
     return;
   }
 
   try {
     // 1. Check and request permission on Capacitor Camera API
-    if (typeof Camera.checkPermissions === 'function') {
+    if (typeof nativeCam.checkPermissions === 'function') {
       try {
-        const perm = await Camera.checkPermissions();
+        const perm = await nativeCam.checkPermissions();
         if (perm && perm.camera !== 'granted') {
-          if (typeof Camera.requestPermissions === 'function') {
-            const req = await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+          if (typeof nativeCam.requestPermissions === 'function') {
+            const req = await nativeCam.requestPermissions({ permissions: ['camera', 'photos'] });
             if (req && req.camera !== 'granted') {
               showPermissionDeniedDialog(
                 "Camera",
@@ -973,7 +1076,7 @@ async function requestAndLaunchNativeCamera(source = "camera") {
     }
 
     // 2. Launch Camera / Gallery
-    const photo = await Camera.getPhoto({
+    const photo = await nativeCam.getPhoto({
       resultType: CameraResultType.DataUrl,
       source: source === "photos" ? CameraSource.Photos : CameraSource.Camera,
       quality: 85,
