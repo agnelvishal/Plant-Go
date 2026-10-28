@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 15 512 512">
+  <title>PlantGo</title>
+  <defs>
+    <linearGradient id="pg-pin" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="1" stop-color="#84cc16"/>
+    </linearGradient>
+    <mask id="pg-sprout" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect x="0" y="0" width="512" height="512" fill="#fff"/>
+      <path d="M256 302 C256 270 253 246 256 214" fill="none" stroke="#000" stroke-width="20" stroke-linecap="round"/>
+      <path d="M256 228 Q230 160 160 165 Q184 231 256 228 Z" fill="#000"/>
+      <path d="M256 216 Q342.5 201 352 116 Q267.5 129 256 216 Z" fill="#000"/>
+    </mask>
+  </defs>
+    <g fill="none" stroke="#22c55e" stroke-linecap="round">
+      <ellipse cx="256" cy="462" rx="78" ry="17" stroke-width="12" opacity="0.9"/>
+      <ellipse cx="256" cy="462" rx="128" ry="29" stroke-width="9" opacity="0.5"/>
+    </g>
+    <path d="M256 452 C222 404 106 304 106 200 A150 150 0 0 1 406 200 C406 304 290 404 256 452 Z" fill="url(#pg-pin)" mask="url(#pg-sprout)"/>
+</svg>
