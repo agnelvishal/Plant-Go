@@ -59,6 +59,12 @@
           <!-- Vector Map Canvas (Replaced with Leaflet Map) -->
           <div id="map"></div>
 
+          <!-- Primary Capture Action: Floating Capture Plant Button -->
+          <button class="map-capture-btn" id="map-capture-btn" aria-label="Capture Plant">
+            <span class="capture-icon">📸</span>
+            <span class="capture-text">Capture Plant</span>
+          </button>
+
           <!-- Gesture Dashboard Mode Extra Overlays -->
           <div class="gesture-header-pill" style="display: none;">
             <span style="color:var(--primary)">★</span> Walk outside to explore nearby
@@ -76,6 +82,7 @@
           
           <!-- Camera upper toolbar -->
           <div class="camera-controls-top">
+            <button class="btn-camera-back" id="camera-back-btn">← Back to Map</button>
             <span>⚡ Auto</span>
             <span>AI Core Active</span>
             <span>⚙</span>
@@ -137,14 +144,22 @@
         </div>
       </div>
 
-      <!-- TAB 4: COMMUNITY VERIFICATION QUEUE -->
-      <div class="app-screen" id="screen-verification">
-        <div class="app-header" style="border-bottom: none; padding: 0.5rem 1.25rem;">
-          <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">Citizen Science Verification Feed</h3>
+      <!-- TAB 3: COMMUNITY & ACHIEVEMENT FEEDS -->
+      <div class="app-screen" id="screen-feeds">
+        <div class="feeds-header">
+          <div class="feeds-title-area">
+            <h3 class="feeds-main-title">Citizen Science Feeds</h3>
+            <span class="feeds-sub-title">Live Sightings & Explorer Achievements</span>
+          </div>
+          <div class="feeds-filter-chips">
+            <button class="feed-chip active" data-feed-filter="all">All</button>
+            <button class="feed-chip" data-feed-filter="sightings">Sightings</button>
+            <button class="feed-chip" data-feed-filter="achievements">Achievements</button>
+          </div>
         </div>
         
-        <div class="verification-scroll">
-          <!-- JS dynamic verification item cards -->
+        <div class="feeds-scroll" id="feeds-container">
+          <!-- JS dynamic feed item cards inserted here -->
         </div>
       </div>
 
@@ -212,15 +227,52 @@
             </div>
           </div>
 
-          <div>
-            <h3 class="profile-section-title">Weekly Challenges</h3>
-            <div class="stat-box" style="text-align: left; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
-              <div style="font-size: 0.85rem; font-weight: 700;">☘ Medicinals Mission</div>
-              <div style="font-size: 0.75rem; color: var(--text-secondary);">Verify 5 medicinal plants in your town. Reward: <b>Eco Ranger Badge</b> & <b>500 XP</b>.</div>
-              <div class="profile-bar-bg">
-                <div class="profile-bar-fill"></div>
+          <!-- Milestone Progress (Replacing missions with feeds & achievements) -->
+          <div style="margin-top: 1.5rem;">
+            <h3 class="profile-section-title">Milestone Progress</h3>
+            <div class="stat-box" style="text-align: left; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="font-size: 0.9rem; font-weight: 700; color: var(--text-primary);">🏆 10 Plants Identified Milestone</div>
+                <span class="milestone-badge-pill" id="milestone-status-badge">9 / 10</span>
               </div>
-              <div style="font-size: 0.65rem; color: var(--text-secondary)">Progress: 3 / 5 plants identified</div>
+              <div style="font-size: 0.78rem; color: var(--text-secondary);">
+                Identify 10 distinct botanical specimens in the field. When completed, your achievement will be shared according to your settings.
+              </div>
+              <div class="profile-bar-bg" style="height: 8px;">
+                <div class="profile-bar-fill" id="milestone-bar-fill" style="width: 90%;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
+                <span style="font-size: 0.72rem; color: var(--text-secondary);" id="milestone-subtext">1 more discovery to reach milestone!</span>
+                <button class="btn-primary" id="btn-quick-discover" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 8px;">+ Discover 10th Plant</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- App Settings Section -->
+          <div style="margin-top: 1.5rem; margin-bottom: 2rem;">
+            <h3 class="profile-section-title">App Settings</h3>
+            <div class="settings-card">
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-title">Publish achievements to feed</div>
+                  <div class="setting-desc">Automatically share major milestones (like 10 plants identified) to the community feed</div>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-publish-achievements" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="setting-divider"></div>
+              <div class="setting-row">
+                <div class="setting-info">
+                  <div class="setting-title">High Accuracy GPS</div>
+                  <div class="setting-desc">Enable high precision geolocation tracking for plant radar</div>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-high-gps" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -299,13 +351,13 @@
 
           </div>
 
-          <!-- Votes voucher action line -->
+          <!-- Community Consensus Status Bar -->
           <div class="detail-votes-action">
             <div>
-              <div class="detail-vote-desc">Vouch for this identification?</div>
-              <div style="font-size: 0.65rem; color: var(--text-secondary);">Help this specimen reach verified status</div>
+              <div class="detail-vote-desc">Community Verification Status</div>
+              <div style="font-size: 0.7rem; color: var(--text-secondary);">Consensus verified by local botanists</div>
             </div>
-            <button class="detail-vote-btn-sheet" id="detail-vote-action-btn">Agree ID (+50 XP)</button>
+            <span class="milestone-badge-pill" style="font-size: 0.8rem; padding: 6px 12px;">Verified ✓</span>
           </div>
 
           <!-- User Feedback & Comments -->
@@ -319,9 +371,8 @@
         </div>
       </div>
 
-      <!-- Bottom Navigation Bar -->
+      <!-- Bottom Navigation Bar (Clean 4-tab bar, Capture Plant button is on Map) -->
       <nav class="phone-nav-bar">
-        
         <a href="#" class="nav-item active" data-tab="map">
           <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
           <span>Map</span>
@@ -332,21 +383,15 @@
           <span>Radar</span>
         </a>
         
-        <a href="#" class="nav-item nav-item-camera" data-tab="ai-identify">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
-          <span>AI Identify</span>
-        </a>
-        
-        <a href="#" class="nav-item" data-tab="verification">
-          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-          <span>Verify</span>
+        <a href="#" class="nav-item" data-tab="feeds">
+          <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+          <span>Feeds</span>
         </a>
         
         <a href="#" class="nav-item" data-tab="profile">
           <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
           <span>Profile</span>
         </a>
-
       </nav>
 
       <!-- Radial Menu Layout components (Not used, but kept for JS handling) -->
@@ -381,5 +426,7 @@
 
   <!-- Load script logic -->
   <script src="app.js"></script>
+  <!-- Toast Notification System -->
+  <div class="toast-notification" id="app-toast"></div>
 </body>
 </html>
