@@ -1925,3 +1925,38 @@ body {
 .auth-btn-danger:hover {
   opacity: 0.9;
 }
+
+
+/* --- LIVE CAMERA SHUTTER STYLING --- */
+.live-shutter-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: 4px solid #ffffff;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4), 0 0 15px rgba(46, 125, 50, 0.4);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  padding: 0;
+  outline: none;
+}
+.live-shutter-btn:hover {
+  transform: scale(1.06);
+  box-shadow: 0 6px 20px rgba(76, 175, 80, 0.6);
+}
+.live-shutter-btn:active {
+  transform: scale(0.94);
+}
+.live-shutter-inner {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4caf50, #2e7d32);
+  transition: background 0.2s ease;
+}
+.live-shutter-btn:hover .live-shutter-inner {
+  background: linear-gradient(135deg, #66bb6a, #388e3c);
+}

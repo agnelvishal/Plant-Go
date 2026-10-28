@@ -247,6 +247,7 @@ const state = {
 // --- CORE UTILITY FUNCTIONS ---
 
 function changeTab(tabName) {
+  if (tabName !== "ai-identify" && typeof stopLiveVideoStream === "function") stopLiveVideoStream();
   state.activeTab = tabName;
   document.querySelectorAll(".app-screen").forEach(screen => {
     screen.classList.remove("active");
@@ -499,15 +500,119 @@ function startLocationWatch() {
 
 // --- CAPTURE & IDENTIFICATION WORKFLOW (Pl@ntNet AI) ---
 
-function openCaptureFlow() {
-  changeTab("ai-identify");
+let liveMediaStream = null;
+
+function isCapacitorNative() {
+  return (
+    typeof window !== 'undefined' &&
+    window.Capacitor &&
+    typeof window.Capacitor.isNativePlatform === 'function' &&
+    window.Capacitor.isNativePlatform()
+  );
 }
 
-const cameraControls = document.getElementById("camera-controls-bottom");
-const viewfinder = document.querySelector(".camera-viewfinder");
+async function openCaptureFlow() {
+  changeTab("ai-identify");
+  await startCameraCapture();
+}
+
+function closeCameraView() {
+  stopLiveVideoStream();
+  changeTab("map");
+}
+
+function stopLiveVideoStream() {
+  if (liveMediaStream) {
+    try {
+      liveMediaStream.getTracks().forEach(track => track.stop());
+    } catch (e) {}
+    liveMediaStream = null;
+  }
+  const videoEl = document.getElementById("camera-live-video");
+  if (videoEl) {
+    videoEl.srcObject = null;
+    videoEl.style.display = "none";
+  }
+}
+
+async function startCameraCapture() {
+  stopLiveVideoStream();
+
+  const viewfinder = document.querySelector(".camera-viewfinder");
+  if (viewfinder) {
+    viewfinder.style.backgroundImage = "none";
+    viewfinder.style.backgroundColor = "#111";
+  }
+
+  // 1. If running natively in Android via Capacitor, trigger native Camera directly
+  if (isCapacitorNative() && Camera) {
+    await requestAndLaunchNativeCamera("camera");
+    return;
+  }
+
+  // 2. If running on Web / localhost, attempt HTML5 getUserMedia live camera stream
+  if (typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+    try {
+      const constraints = {
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      liveMediaStream = stream;
+      const videoEl = document.getElementById("camera-live-video");
+      if (videoEl) {
+        videoEl.srcObject = stream;
+        videoEl.style.display = "block";
+        await videoEl.play();
+        renderCameraControls("live-stream");
+        return;
+      }
+    } catch (webCamErr) {
+      console.warn("Live webcam stream rejected or unavailable:", webCamErr);
+    }
+  }
+
+  // 3. Fallback: try Capacitor Camera or Web File Input
+  if (Camera) {
+    await requestAndLaunchNativeCamera("camera");
+  } else {
+    triggerWebFileInput();
+  }
+}
+
+function captureLiveVideoFrame() {
+  const videoEl = document.getElementById("camera-live-video");
+  const canvasEl = document.getElementById("camera-snapshot-canvas");
+  const viewfinder = document.querySelector(".camera-viewfinder");
+  if (!videoEl || !canvasEl) return;
+
+  canvasEl.width = videoEl.videoWidth || 640;
+  canvasEl.height = videoEl.videoHeight || 480;
+  const ctx = canvasEl.getContext("2d");
+  ctx.drawImage(videoEl, 0, 0, canvasEl.width, canvasEl.height);
+
+  const dataUrl = canvasEl.toDataURL("image/jpeg", 0.9);
+  state.photoData = dataUrl;
+
+  stopLiveVideoStream();
+
+  if (viewfinder) {
+    viewfinder.style.backgroundImage = "url(" + dataUrl + ")";
+    viewfinder.style.backgroundSize = "cover";
+    viewfinder.style.backgroundPosition = "center";
+  }
+
+  renderCameraControls("preview");
+  showToast("Photo captured! Choose organ to identify 🌿", "success");
+}
 
 function triggerWebFileInput() {
   const fileInput = document.getElementById("web-file-input");
+  const viewfinder = document.querySelector(".camera-viewfinder");
   if (fileInput) {
     fileInput.value = "";
     fileInput.onchange = (e) => {
@@ -516,9 +621,12 @@ function triggerWebFileInput() {
       const reader = new FileReader();
       reader.onload = (event) => {
         state.photoData = event.target.result;
-        viewfinder.style.backgroundImage = "url(" + state.photoData + ")";
-        viewfinder.style.backgroundSize = "cover";
-        viewfinder.style.backgroundPosition = "center";
+        stopLiveVideoStream();
+        if (viewfinder) {
+          viewfinder.style.backgroundImage = "url(" + state.photoData + ")";
+          viewfinder.style.backgroundSize = "cover";
+          viewfinder.style.backgroundPosition = "center";
+        }
         renderCameraControls("preview");
       };
       reader.readAsDataURL(file);
@@ -530,18 +638,43 @@ function triggerWebFileInput() {
 }
 
 function renderCameraControls(mode) {
-  if (!cameraControls || !viewfinder) return;
+  const cameraControls = document.getElementById("camera-controls-bottom");
+  const viewfinder = document.querySelector(".camera-viewfinder");
+  if (!cameraControls) return;
   cameraControls.innerHTML = "";
 
-  if (mode === "initial") {
-    viewfinder.style.backgroundImage = "none";
-    viewfinder.style.backgroundColor = "#111";
+  if (mode === "live-stream") {
+    cameraControls.innerHTML = `
+      <div style="display:flex; flex-direction:column; align-items:center; gap:12px; width:100%; position:relative; z-index:10;">
+        <div style="display:flex; justify-content:center; align-items:center; gap:20px; width:100%;">
+          <button class="btn-secondary" id="btn-switch-gallery" style="flex:1; max-width:130px; padding:10px; font-size:0.8rem; border-radius:12px;">🖼 Upload</button>
+          <button class="live-shutter-btn" id="btn-shutter" title="Take Photo">
+            <div class="live-shutter-inner"></div>
+          </button>
+          <button class="btn-secondary" id="btn-demo-sample" style="flex:1; max-width:130px; padding:10px; font-size:0.8rem; border-radius:12px;">🌹 Sample</button>
+        </div>
+      </div>`;
+
+    const shutterBtn = document.getElementById("btn-shutter");
+    if (shutterBtn) shutterBtn.onclick = captureLiveVideoFrame;
+
+    const galleryBtn = document.getElementById("btn-switch-gallery");
+    if (galleryBtn) galleryBtn.onclick = triggerWebFileInput;
+
+    const sampleBtn = document.getElementById("btn-demo-sample");
+    if (sampleBtn) sampleBtn.onclick = () => simulatePhotoCapture("assets/plant_rose.png");
+
+  } else if (mode === "initial") {
+    if (viewfinder) {
+      viewfinder.style.backgroundImage = "none";
+      viewfinder.style.backgroundColor = "#111";
+    }
 
     cameraControls.innerHTML = `
-      <div class="camera-initial-menu">
+      <div class="camera-initial-menu" style="position:relative; z-index:10;">
         <div style="display:flex; gap:10px; width:100%; margin-bottom:10px;">
           <button class="btn-secondary" id="btn-gallery" style="flex:1;">🖼 Upload / Gallery</button>
-          <button class="btn-primary" id="btn-camera" style="flex:1;">📸 Scan Flora</button>
+          <button class="btn-primary" id="btn-camera" style="flex:1;">📸 Open Camera</button>
         </div>
         <div style="display:flex; align-items:center; justify-content:center; gap:8px; font-size:0.75rem; color:#aaa;">
           <span>Quick Demo:</span>
@@ -550,8 +683,12 @@ function renderCameraControls(mode) {
           <button class="sample-pill" data-sample="assets/plant_banyan.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🌳 Banyan</button>
         </div>
       </div>`;
-    document.getElementById("btn-camera").onclick = () => checkAndRequestCameraPermission();
-    document.getElementById("btn-gallery").onclick = () => checkAndRequestGalleryPermission();
+
+    const camBtn = document.getElementById("btn-camera");
+    if (camBtn) camBtn.onclick = () => startCameraCapture();
+
+    const galBtn = document.getElementById("btn-gallery");
+    if (galBtn) galBtn.onclick = () => checkAndRequestGalleryPermission();
 
     document.querySelectorAll(".sample-pill").forEach(pill => {
       pill.onclick = () => {
@@ -563,7 +700,7 @@ function renderCameraControls(mode) {
     state.selectedOrgan = state.selectedOrgan || "auto";
 
     cameraControls.innerHTML = `
-      <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:100%;">
+      <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; position:relative; z-index:10;">
         <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary);">
           <span>Botanical Organ:</span>
           <div class="organ-chips-row" style="display:flex; gap:4px;">
@@ -579,6 +716,7 @@ function renderCameraControls(mode) {
           <button class="btn-primary" id="btn-use-photo" style="flex:2;">🌿 Identify with Pl@ntNet</button>
         </div>
       </div>`;
+
     document.querySelectorAll(".organ-chip").forEach(chip => {
       chip.onclick = () => {
         state.selectedOrgan = chip.getAttribute("data-organ");
@@ -586,12 +724,12 @@ function renderCameraControls(mode) {
       };
     });
 
-    document.getElementById("btn-retake").onclick = () => renderCameraControls("initial");
+    document.getElementById("btn-retake").onclick = () => startCameraCapture();
     document.getElementById("btn-use-photo").onclick = () => runIdentification(state.photoData, state.selectedOrgan);
 
   } else if (mode === "analyzing") {
     cameraControls.innerHTML = `
-      <div class="camera-analyzing-overlay" style="text-align:center; padding:15px;">
+      <div class="camera-analyzing-overlay" style="text-align:center; padding:15px; position:relative; z-index:10;">
         <h3 style="color:var(--primary); margin-bottom:6px;">Consulting Pl@ntNet AI...</h3>
         <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">Matching floral morphology, venation, and botanical taxonomy against 30,000+ species.</p>
         <div class="loading-spinner" style="margin:0 auto;"></div>
@@ -599,74 +737,103 @@ function renderCameraControls(mode) {
   }
 }
 
-async function checkAndRequestCameraPermission() {
+async function requestAndLaunchNativeCamera(source = "camera") {
   if (!Camera) {
     triggerWebFileInput();
     return;
   }
 
   try {
-    if (Permissions && Permissions.query) {
-      const permission = await Permissions.query({ name: "camera" });
-      if (permission.state === "granted") {
-        takePhoto("camera");
-      } else {
-        const result = await Permissions.requestPermissions({ permissions: ["camera"] });
-        if (result.camera === "granted") {
-          takePhoto("camera");
-        } else {
-          showPermissionDeniedDialog("Camera", checkAndRequestCameraPermission, checkAndRequestGalleryPermission);
+    // 1. Check and request permission on Capacitor Camera API
+    if (typeof Camera.checkPermissions === 'function') {
+      try {
+        const perm = await Camera.checkPermissions();
+        if (perm && perm.camera !== 'granted') {
+          if (typeof Camera.requestPermissions === 'function') {
+            const req = await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+            if (req && req.camera !== 'granted') {
+              showPermissionDeniedDialog(
+                "Camera",
+                () => requestAndLaunchNativeCamera("camera"),
+                () => requestAndLaunchNativeCamera("photos")
+              );
+              return;
+            }
+          }
         }
+      } catch (permErr) {
+        console.warn("Camera checkPermissions error:", permErr);
       }
-    } else {
-      takePhoto("camera");
     }
-  } catch (e) {
-    takePhoto("camera");
+
+    // 2. Launch Camera / Gallery
+    const photo = await Camera.getPhoto({
+      resultType: CameraResultType.DataUrl,
+      source: source === "photos" ? CameraSource.Photos : CameraSource.Camera,
+      quality: 85,
+      allowEditing: false,
+      saveToGallery: false
+    });
+
+    if (photo && photo.dataUrl) {
+      state.photoData = photo.dataUrl;
+      stopLiveVideoStream();
+      const viewfinder = document.querySelector(".camera-viewfinder");
+      if (viewfinder) {
+        viewfinder.style.backgroundImage = "url(" + photo.dataUrl + ")";
+        viewfinder.style.backgroundSize = "cover";
+        viewfinder.style.backgroundPosition = "center";
+      }
+      renderCameraControls("preview");
+      showToast("Specimen photo captured! Select organ to identify 🌿", "success");
+    }
+  } catch (err) {
+    console.warn("Native camera operation cancelled or error:", err);
+    if (err && err.message && (err.message.includes("cancelled") || err.message.includes("User cancelled"))) {
+      renderCameraControls("initial");
+    } else {
+      triggerWebFileInput();
+    }
   }
+}
+
+async function checkAndRequestCameraPermission() {
+  await startCameraCapture();
 }
 
 async function checkAndRequestGalleryPermission() {
-  if (!Camera) {
-    triggerWebFileInput();
-    return;
-  }
-  takePhoto("photos");
-}
-
-async function takePhoto(source) {
-  try {
-    const photo = await Camera.getPhoto({
-      resultType: CameraResultType.DataUrl,
-      source: source === "camera" ? CameraSource.Camera : CameraSource.Photos,
-      quality: 85,
-    });
-    
-    state.photoData = photo.dataUrl;
-    viewfinder.style.backgroundImage = "url(" + photo.dataUrl + ")";
-    viewfinder.style.backgroundSize = "cover";
-    viewfinder.style.backgroundPosition = "center";
-    
-    renderCameraControls("preview");
-  } catch (e) {
-    console.log("Camera operation cancelled or unavailable:", e);
+  if (isCapacitorNative() && Camera) {
+    await requestAndLaunchNativeCamera("photos");
+  } else {
     triggerWebFileInput();
   }
 }
 
 function simulatePhotoCapture(imagePath) {
   state.photoData = imagePath;
-  viewfinder.style.backgroundImage = "url(" + imagePath + ")";
-  viewfinder.style.backgroundSize = "cover";
-  viewfinder.style.backgroundPosition = "center";
+  stopLiveVideoStream();
+  const viewfinder = document.querySelector(".camera-viewfinder");
+  if (viewfinder) {
+    viewfinder.style.backgroundImage = "url(" + imagePath + ")";
+    viewfinder.style.backgroundSize = "cover";
+    viewfinder.style.backgroundPosition = "center";
+  }
   renderCameraControls("preview");
 }
 
 function initCameraFlow() {
-  renderCameraControls("initial");
   const overlay = document.querySelector(".ai-results-overlay");
   if (overlay) overlay.classList.remove("active");
+  renderCameraControls("initial");
 }
+
+window.openCaptureFlow = openCaptureFlow;
+window.closeCameraView = closeCameraView;
+window.startCameraCapture = startCameraCapture;
+window.captureLiveVideoFrame = captureLiveVideoFrame;
+window.checkAndRequestCameraPermission = checkAndRequestCameraPermission;
+window.checkAndRequestGalleryPermission = checkAndRequestGalleryPermission;
+
 
 async function runIdentification(photoPath, organ = "auto") {
   renderCameraControls("analyzing");
