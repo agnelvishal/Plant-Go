@@ -10,44 +10,92 @@ const Permissions = CapacitorPlugins.Permissions || null;
 // --- STATE MANAGEMENT ---
 // --- MARIADB BACKEND API CONFIGURATION ---
 const CLOUD_API_BASE = "https://plantgo.gptindia.pro/api";
-const LOCAL_API_BASE = "http://127.0.0.1:5001/api";
+const LOCAL_EMULATOR_API_BASE = "http://10.0.2.2:5001/api";
+const LOCAL_LAN_API_BASE = "http://localhost:5001/api";
+const LOCAL_LOOPBACK_API_BASE = "http://127.0.0.1:5001/api";
 
 let API_BASE = CLOUD_API_BASE;
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(url, { ...options, signal: controller ? controller.signal : undefined });
+    return res;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
 async function syncFromBackend() {
   updateBackendStatusUI(false, "Connecting to MariaDB backend...", true);
-  try {
-    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timeoutTimer = controller ? setTimeout(() => controller.abort(), 4000) : null;
 
-    let healthRes = null;
-    let activeEndpoint = API_BASE;
+  const savedPreference = localStorage.getItem("plantgo_selected_api_base") || "auto";
+  let candidateEndpoints = [];
+
+  if (savedPreference && savedPreference !== "auto") {
+    candidateEndpoints = [savedPreference];
+  } else {
+    // In Android runtime (Capacitor), prioritize Cloud then Android emulator / LAN / loopback
+    candidateEndpoints = [
+      CLOUD_API_BASE,
+      LOCAL_EMULATOR_API_BASE,
+      LOCAL_LAN_API_BASE,
+      LOCAL_LOOPBACK_API_BASE
+    ];
+  }
+
+  let healthRes = null;
+  let activeEndpoint = null;
+  let lastError = null;
+
+  for (const ep of candidateEndpoints) {
     try {
-      healthRes = await fetch(API_BASE + "/health", controller ? { signal: controller.signal } : {});
-    } catch (e1) {
-      const fallbackUrl = (API_BASE === CLOUD_API_BASE) ? (LOCAL_API_BASE + "/health") : (CLOUD_API_BASE + "/health");
-      try {
-        healthRes = await fetch(fallbackUrl, controller ? { signal: controller.signal } : {});
-        if (healthRes && healthRes.ok) {
-          activeEndpoint = (API_BASE === CLOUD_API_BASE) ? LOCAL_API_BASE : CLOUD_API_BASE;
-          API_BASE = activeEndpoint;
+      const res = await fetchWithTimeout(ep + "/health", {}, 4500);
+      if (res && res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && data.status === "ok") {
+          healthRes = res;
+          activeEndpoint = ep;
+          API_BASE = ep;
+          break;
         }
-      } catch (e2) {}
-    } finally {
-      if (timeoutTimer) clearTimeout(timeoutTimer);
+      }
+    } catch (err) {
+      lastError = err;
+      console.warn(`PlantGo: Health check failed for ${ep}:`, err.message);
     }
+  }
 
-    if (!healthRes || !healthRes.ok) throw new Error("Health check returned status " + (healthRes ? healthRes.status : "unknown"));
-    
+  if (!activeEndpoint) {
+    state.backendConnected = false;
+    const failureMsg = savedPreference !== "auto" 
+      ? `Could not reach ${savedPreference}`
+      : "Could not reach Cloud or Local MariaDB server";
+    updateBackendStatusUI(false, "Offline mode (" + failureMsg + ")");
+    console.warn("Backend unavailable, using local mock data. Last error:", lastError?.message);
+    return;
+  }
+
+  try {
     state.backendConnected = true;
-    const label = activeEndpoint.includes("plantgo.gptindia.pro") ? "Cloud Server Active" : "Local MariaDB Active";
+    let label = "";
+    if (activeEndpoint.includes("plantgo.gptindia.pro")) {
+      label = "Cloud Server (plantgo.gptindia.pro)";
+    } else if (activeEndpoint.includes("10.0.2.2")) {
+      label = "Android Emulator (10.0.2.2:5001)";
+    } else if (activeEndpoint.includes("localhost")) {
+      label = "Wi-Fi PC (localhost:5001)";
+    } else {
+      label = "Local Host (" + activeEndpoint + ")";
+    }
     updateBackendStatusUI(true, label);
 
     const [profileRes, feedsRes, radarRes, settingsRes] = await Promise.all([
-      fetch(API_BASE + "/profile").then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(API_BASE + "/feeds").then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(API_BASE + "/radar").then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(API_BASE + "/settings").then(r => r.ok ? r.json() : null).catch(() => null)
+      fetchWithTimeout(API_BASE + "/profile", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchWithTimeout(API_BASE + "/feeds", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchWithTimeout(API_BASE + "/radar", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchWithTimeout(API_BASE + "/settings", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null)
     ]);
 
     if (profileRes) {
@@ -85,11 +133,11 @@ async function syncFromBackend() {
       if (gpsEl) gpsEl.checked = state.settings.highAccuracyGps;
     }
 
-    console.log("🌿 MariaDB PlantGo data synced successfully!");
+    console.log("🌿 MariaDB PlantGo data synced successfully from " + activeEndpoint);
   } catch (err) {
     state.backendConnected = false;
-    updateBackendStatusUI(false, "Offline mode (Could not reach MariaDB server)");
-    console.warn("Backend unavailable, using local mock data:", err.message);
+    updateBackendStatusUI(false, "Offline mode (" + err.message + ")");
+    console.warn("Backend data fetch error:", err.message);
   }
 }
 
@@ -98,7 +146,7 @@ function updateBackendStatusUI(connected, text, isChecking = false) {
   const desc = document.getElementById("backend-status-desc");
   if (badge) {
     if (isChecking) {
-      badge.textContent = "Checking...";
+      badge.textContent = "Connecting... ⏳";
       badge.style.background = "rgba(33, 150, 243, 0.15)";
       badge.style.color = "#1976d2";
     } else {
@@ -1663,7 +1711,20 @@ function initApp() {
     sheetClose.onclick = closeSpecimenDetails;
   }
 
-  // MariaDB Manual Reconnect Button
+  // MariaDB Manual Reconnect Button & Endpoint Selector
+  const backendSelect = document.getElementById("setting-backend-select");
+  if (backendSelect) {
+    const saved = localStorage.getItem("plantgo_selected_api_base") || "auto";
+    backendSelect.value = saved;
+    backendSelect.addEventListener("change", async (e) => {
+      const selected = e.target.value;
+      localStorage.setItem("plantgo_selected_api_base", selected);
+      showToast("Connecting to: " + (selected === "auto" ? "Auto-Detect" : selected) + "...");
+      await syncFromBackend();
+      showToast(state.backendConnected ? "✓ Connected to MariaDB!" : "✕ Connection failed");
+    });
+  }
+
   const reconnectDbBtn = document.getElementById("btn-reconnect-db");
   if (reconnectDbBtn) {
     reconnectDbBtn.onclick = async () => {
