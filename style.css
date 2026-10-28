@@ -2261,3 +2261,256 @@ body {
   justify-content: center;
   min-height: 40px;
 }
+
+/* --- IDENTIFY SCREEN: welcome hero, preview panel --- */
+.camera-viewfinder {
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+}
+
+/* Keep the results drawer fully hidden until a result is shown */
+.ai-results-overlay {
+  visibility: hidden;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s linear 0.3s;
+}
+.ai-results-overlay.active {
+  visibility: visible;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0s;
+}
+
+.camera-viewfinder.is-initial {
+  background-color: #1b5e20;
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(165, 214, 167, 0.35) 0, transparent 38%),
+    radial-gradient(circle at 85% 75%, rgba(129, 199, 132, 0.30) 0, transparent 42%),
+    radial-gradient(circle at 80% 10%, rgba(255, 241, 118, 0.18) 0, transparent 30%),
+    linear-gradient(160deg, #2e7d32 0%, #1b5e20 55%, #0d3b12 100%);
+}
+
+.camera-top-title {
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.95rem;
+  align-self: center;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+.identify-hero {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 72px 20px 24px;
+  text-align: center;
+  color: #fff;
+}
+.camera-viewfinder.is-initial .identify-hero {
+  display: flex;
+}
+
+.identify-hero-icon {
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 46px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 10px rgba(255, 255, 255, 0.06), 0 12px 32px rgba(0, 0, 0, 0.25);
+  margin-bottom: 18px;
+}
+
+.identify-hero-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 0 0 8px;
+  color: #fff;
+}
+
+.identify-hero-sub {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 320px;
+  margin: 0 0 26px;
+}
+
+.identify-hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.identify-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 18px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.identify-btn:active {
+  transform: scale(0.97);
+}
+
+.identify-btn-camera {
+  background: #ffffff;
+  color: #1b5e20;
+  border: none;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+}
+
+.identify-btn-gallery {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  border: 1.5px solid rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.identify-btn-icon {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+}
+.identify-btn-camera .identify-btn-icon {
+  background: #e8f5e9;
+}
+.identify-btn-gallery .identify-btn-icon {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.identify-btn-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.identify-btn-text strong {
+  font-size: 1.02rem;
+  font-weight: 700;
+}
+.identify-btn-text small {
+  font-size: 0.78rem;
+  opacity: 0.75;
+}
+
+.identify-hero-tips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 26px;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+.identify-tip {
+  padding: 4px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+/* Bottom panel shown over the chosen photo */
+.camera-preview-panel {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--bg-card);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.25);
+}
+.organ-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.organ-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+.organ-chip {
+  padding: 5px 11px;
+  font-size: 0.78rem;
+  font-family: inherit;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.organ-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.camera-preview-menu {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+/* --- EMPTY STATES & FEED ACTIONS --- */
+.empty-state {
+  text-align: center;
+  padding: 2.5rem 1.5rem;
+  color: var(--text-secondary);
+}
+.empty-state-icon {
+  font-size: 2.4rem;
+  margin-bottom: 8px;
+}
+.empty-state-title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.empty-state-desc {
+  font-size: 0.82rem;
+}
+
+.verification-image-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  background: #e8f5e9;
+}
+
+.feed-vouch-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px;
+  font-size: 0.8rem;
+  border-radius: 10px;
+}
+
+.camera-controls-bottom {
+  position: relative;
+  z-index: 10;
+  padding: 12px;
+}

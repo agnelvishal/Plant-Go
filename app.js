@@ -28,6 +28,89 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
   }
 }
 
+// --- SESSION (issued by the backend after Google/Firebase sign-in) ---
+function getSessionToken() {
+  try { return localStorage.getItem("plantgo_session"); } catch (e) { return null; }
+}
+
+function setSessionToken(token) {
+  try {
+    if (token) localStorage.setItem("plantgo_session", token);
+    else localStorage.removeItem("plantgo_session");
+  } catch (e) {}
+}
+
+// Backend request with the signed-in user's session attached
+async function apiFetch(path, options = {}, timeoutMs = 8000) {
+  const headers = { ...(options.headers || {}) };
+  if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  const token = getSessionToken();
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const res = await fetchWithTimeout(API_BASE + path, { ...options, headers }, timeoutMs);
+  if (res.status === 401 && token) {
+    setSessionToken(null);
+    applyUserStats(null);
+  }
+  return res;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Uploaded photos are served by the backend under /api/uploads
+function resolveImageUrl(img) {
+  if (!img) return "";
+  if (img.startsWith("/api/")) return API_BASE.replace(/\/api$/, "") + img;
+  return img;
+}
+
+function applyUserStats(u) {
+  state.userStats = {
+    discoveredCount: u?.discoveredCount ?? 0,
+    reviewedCount: u?.reviewedCount ?? 0,
+    totalPoints: u?.totalPoints ?? 0,
+    level: u?.level ?? 1,
+    xp: u?.xp ?? 0,
+    xpToNext: u?.xpToNext ?? 1000,
+    milestoneAchieved: Boolean(u?.milestoneAchieved)
+  };
+  updateProfileUI();
+}
+
+// Loads profile, feeds, radar and settings for the current session (or guest)
+async function loadUserData() {
+  const [profileRes, feedsRes, radarRes, settingsRes] = await Promise.all([
+    apiFetch("/profile").then(r => r.ok ? r.json() : null).catch(() => null),
+    apiFetch("/feeds").then(r => r.ok ? r.json() : null).catch(() => null),
+    apiFetch("/radar").then(r => r.ok ? r.json() : null).catch(() => null),
+    apiFetch("/settings").then(r => r.ok ? r.json() : null).catch(() => null)
+  ]);
+
+  applyUserStats(profileRes);
+
+  if (Array.isArray(feedsRes)) {
+    state.feeds = feedsRes;
+    renderFeeds();
+  }
+
+  if (Array.isArray(radarRes)) {
+    state.radarPlants = radarRes;
+    updateRadarDistances();
+    renderRadarList();
+    renderMapPlantMarkers();
+  }
+
+  if (settingsRes) {
+    state.settings.publishAchievementsToFeed = settingsRes.publishAchievementsToFeed;
+    state.settings.highAccuracyGps = settingsRes.highAccuracyGps;
+    const pubEl = document.getElementById("setting-publish-achievements");
+    if (pubEl) pubEl.checked = state.settings.publishAchievementsToFeed;
+    const gpsEl = document.getElementById("setting-high-gps");
+    if (gpsEl) gpsEl.checked = state.settings.highAccuracyGps;
+  }
+}
+
 async function syncFromBackend() {
   updateBackendStatusUI(false, "Connecting to MariaDB backend...", true);
 
@@ -92,47 +175,7 @@ async function syncFromBackend() {
     }
     updateBackendStatusUI(true, label);
 
-    const [profileRes, feedsRes, radarRes, settingsRes] = await Promise.all([
-      fetchWithTimeout(API_BASE + "/profile", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetchWithTimeout(API_BASE + "/feeds", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetchWithTimeout(API_BASE + "/radar", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetchWithTimeout(API_BASE + "/settings", {}, 6000).then(r => r.ok ? r.json() : null).catch(() => null)
-    ]);
-
-    if (profileRes) {
-      state.userStats = {
-        discoveredCount: profileRes.discoveredCount,
-        reviewedCount: profileRes.reviewedCount,
-        totalPoints: profileRes.totalPoints,
-        level: profileRes.level,
-        xp: profileRes.xp,
-        xpToNext: profileRes.xpToNext,
-        milestoneAchieved: profileRes.milestoneAchieved
-      };
-      updateProfileUI();
-    }
-
-    if (feedsRes && Array.isArray(feedsRes)) {
-      state.feeds = feedsRes;
-      renderFeeds();
-    }
-
-    if (radarRes && Array.isArray(radarRes)) {
-      state.radarPlants = radarRes;
-      renderRadarList();
-      if (state.mapInitialized) {
-        renderMapPlantMarkers();
-      }
-    }
-
-    if (settingsRes) {
-      state.settings.publishAchievementsToFeed = settingsRes.publishAchievementsToFeed;
-      state.settings.highAccuracyGps = settingsRes.highAccuracyGps;
-      const pubEl = document.getElementById("setting-publish-achievements");
-      if (pubEl) pubEl.checked = state.settings.publishAchievementsToFeed;
-      const gpsEl = document.getElementById("setting-high-gps");
-      if (gpsEl) gpsEl.checked = state.settings.highAccuracyGps;
-    }
+    await loadUserData();
 
     console.log("🌿 MariaDB PlantGo data synced successfully from " + activeEndpoint);
   } catch (err) {
@@ -179,7 +222,6 @@ const state = {
   userMarker: null,
   accuracyCircle: null,
   currentLocation: null,
-  radarAnchoredToUser: false,
   mapInitialized: false,
   locationWatcher: null,
   mapMarkers: [],
@@ -188,116 +230,16 @@ const state = {
     highAccuracyGps: true
   },
   userStats: {
-    discoveredCount: 9, // Seeded at 9 to allow testing the 10th plant milestone immediately
-    reviewedCount: 2,
-    totalPoints: 4280,
-    level: 14,
-    xp: 2340,
-    xpToNext: 5000,
+    discoveredCount: 0,
+    reviewedCount: 0,
+    totalPoints: 0,
+    level: 1,
+    xp: 0,
+    xpToNext: 1000,
     milestoneAchieved: false
   },
-  feeds: [
-    {
-      id: 'feed-1',
-      type: 'sighting',
-      user: 'Aria_Botanica',
-      avatar: 'assets/avatar_explorer.png',
-      badgeText: 'Field Sighting',
-      title: 'Sacred Banyan Tree (Ficus benghalensis)',
-      subtitle: 'Near Central Botanical Grove • 1h ago',
-      image: 'assets/plant_banyan.png',
-      family: 'Moraceae',
-      votes: 8,
-      verified: true,
-      status: 'Community Consensus'
-    },
-    {
-      id: 'feed-2',
-      type: 'achievement',
-      user: 'LeafSeeker_99',
-      avatar: 'assets/avatar_explorer.png',
-      badgeText: 'Milestone',
-      title: '🏆 Reached 10 Plants Identified!',
-      subtitle: 'Milestone Achievement • 3h ago',
-      description: 'LeafSeeker_99 just logged their 10th wild plant identification! Awarded the "Deca Botanist" trophy.',
-      icon: '🏅',
-      cheers: 14,
-      cheered: false
-    },
-    {
-      id: 'feed-3',
-      type: 'sighting',
-      user: 'FloraFinder_Sam',
-      avatar: 'assets/avatar_explorer.png',
-      badgeText: 'Needs Vouching',
-      title: 'Aloe Vera (Aloe barbadensis miller)',
-      subtitle: 'Highland Trail Waypoint • 5h ago',
-      image: 'assets/plant_aloe.png',
-      family: 'Asphodelaceae',
-      votes: 3,
-      verified: false,
-      status: 'Needs 2 more reviews'
-    }
-  ],
-  radarPlants: [
-    {
-      id: 'banyan-1',
-      name: 'Sacred Banyan Tree',
-      scientific: 'Ficus benghalensis',
-      category: 'trees',
-      dist: '120m away',
-      image: 'assets/plant_banyan.png',
-      lat: 20.003,
-      lng: 0.002,
-      rarity: 'Common Sacred',
-      family: 'Moraceae',
-      desc: 'Large evergreen tree with aerial prop roots forming massive natural canopy architecture.',
-      sun: 'Full to Partial',
-      water: 'Moderate',
-      edible: 'Fruiting figs edible to wildlife',
-      medicinal: 'Bark & latex traditionally utilized',
-      flowering: 'Year-round',
-      fruiting: 'May - July'
-    },
-    {
-      id: 'aloe-1',
-      name: 'Aloe Vera',
-      scientific: 'Aloe barbadensis miller',
-      category: 'medicinal',
-      dist: '280m away',
-      image: 'assets/plant_aloe.png',
-      lat: 20.001,
-      lng: -0.003,
-      rarity: 'Medicinal Succulent',
-      family: 'Asphodelaceae',
-      desc: 'Stemless, thick fleshy leaves containing soothing soothing phytochemicals and polysaccharides.',
-      sun: 'Direct Bright',
-      water: 'Low / Drought Tolerant',
-      edible: 'Gel consumed in health tonics',
-      medicinal: 'Skin soothing, burn alleviation',
-      flowering: 'Early Summer',
-      fruiting: 'Late Summer'
-    },
-    {
-      id: 'rose-1',
-      name: 'Chinese Rose',
-      scientific: 'Rosa chinensis',
-      category: 'flowers',
-      dist: '450m away',
-      image: 'assets/plant_rose.png',
-      lat: 19.997,
-      lng: 0.001,
-      rarity: 'Ornamental Shrub',
-      family: 'Rosaceae',
-      desc: 'Vibrant perennial garden rose cultivar renowned for recurring fragrant blooms.',
-      sun: 'Full Sun',
-      water: 'Regular',
-      edible: 'Rose hips rich in Vitamin C',
-      medicinal: 'Aromatherapy & rosewater extracts',
-      flowering: 'Spring to Autumn',
-      fruiting: 'Autumn'
-    }
-  ]
+  feeds: [],
+  radarPlants: []
 };
 
 // --- CORE UTILITY FUNCTIONS ---
@@ -541,6 +483,7 @@ function renderMapPlantMarkers() {
   state.mapMarkers = [];
 
   const plants = state.radarPlants.filter(p => {
+    if (p.lat == null || p.lng == null) return false;
     if (state.mapFilter === 'all') return true;
     return p.category === state.mapFilter;
   });
@@ -549,7 +492,7 @@ function renderMapPlantMarkers() {
     const customIcon = L.divIcon({
       className: 'custom-plant-pin',
       html: `
-        <div style="background:var(--primary, #2e7d32); color:white; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.35); border:2.5px solid white; font-size:18px; cursor:pointer;" title="${plant.name}">
+        <div style="background:var(--primary, #2e7d32); color:white; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 12px rgba(0,0,0,0.35); border:2.5px solid white; font-size:18px; cursor:pointer;" title="${escapeHtml(plant.commonName || plant.title)}">
           🌿
         </div>
       `,
@@ -563,8 +506,8 @@ function renderMapPlantMarkers() {
     // Bind interactive specimen popup
     marker.bindPopup(`
       <div style="font-family: inherit; font-size: 13px; min-width: 140px; padding: 6px 4px; text-align: center;">
-        <strong style="color: var(--primary, #2e7d32); font-size: 14px; display: block; margin-bottom: 2px;">${plant.name}</strong>
-        <span style="font-style: italic; color: #666; font-size: 11px; display: block; margin-bottom: 8px;">${plant.scientific}</span>
+        <strong style="color: var(--primary, #2e7d32); font-size: 14px; display: block; margin-bottom: 2px;">${escapeHtml(plant.commonName || plant.title)}</strong>
+        <span style="font-style: italic; color: #666; font-size: 11px; display: block; margin-bottom: 8px;">${escapeHtml(plant.scientific || "")}</span>
         <button type="button" onclick="openSpecimenDetailsById('${plant.id}')" style="background: var(--primary, #2e7d32); color: white; border: none; padding: 6px 14px; border-radius: 14px; font-size: 11px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2);">Inspect Specimen 🔍</button>
       </div>
     `);
@@ -645,32 +588,32 @@ function handleUserLocationSuccess(lat, lng, accuracy, autoFly = false) {
   hideLocationBanner();
   updateGpsStatusBadge('active', 'GPS Active 📍');
 
-  // 5. Anchor radar specimens around user coordinates so user sees nearby flora
-  anchorRadarPlantsToUser(lat, lng);
+  // 5. Refresh distances to nearby community sightings
+  updateRadarDistances();
+  renderRadarList();
 }
 
-function anchorRadarPlantsToUser(userLat, userLng) {
-  if (state.radarAnchoredToUser) return;
-  state.radarAnchoredToUser = true;
+function distanceMeters(a, b) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
 
-  const plantOffsets = [
-    { dLat: 0.0016, dLng: 0.0018, dist: '180m away' },
-    { dLat: -0.0014, dLng: 0.0022, dist: '240m away' },
-    { dLat: 0.0022, dLng: -0.0019, dist: '310m away' },
-    { dLat: -0.0020, dLng: -0.0015, dist: '290m away' },
-    { dLat: 0.0008, dLng: -0.0024, dist: '210m away' }
-  ];
+function formatDistance(m) {
+  return m < 1000 ? Math.max(10, Math.round(m / 10) * 10) + "m away" : (m / 1000).toFixed(1) + " km away";
+}
 
-  if (state.radarPlants && state.radarPlants.length > 0) {
-    state.radarPlants.forEach((p, idx) => {
-      const off = plantOffsets[idx % plantOffsets.length];
-      p.lat = userLat + off.dLat;
-      p.lng = userLng + off.dLng;
-      p.dist = off.dist;
-    });
-    renderMapPlantMarkers();
-    renderRadarList();
-  }
+// Real distance from the user to each community sighting, nearest first
+function updateRadarDistances() {
+  const loc = state.currentLocation;
+  state.radarPlants.forEach(p => {
+    p.distM = loc && p.lat != null && p.lng != null ? distanceMeters(loc, p) : null;
+    p.dist = p.distM != null ? formatDistance(p.distM) : "";
+  });
+  state.radarPlants.sort((a, b) => (a.distM ?? Infinity) - (b.distM ?? Infinity));
 }
 
 let gpsWatchdogTimer = null;
@@ -687,7 +630,6 @@ async function checkAndRequestLocationPermission(userInitiated = false) {
     if (!state.currentLocation) {
       updateGpsStatusBadge('denied', 'Tap to Retry GPS 📍');
       showLocationPermissionBanner();
-      anchorRadarPlantsToUser(12.9716, 77.5946);
     }
     isLocating = false;
   }, 8000);
@@ -726,7 +668,6 @@ async function checkAndRequestLocationPermission(userInitiated = false) {
         isLocating = false;
         updateGpsStatusBadge('denied', 'Location Permission Denied');
         showLocationPermissionBanner();
-        anchorRadarPlantsToUser(12.9716, 77.5946);
         if (userInitiated) {
           showPermissionDeniedDialog('Location', () => checkAndRequestLocationPermission(true));
         }
@@ -739,7 +680,6 @@ async function checkAndRequestLocationPermission(userInitiated = false) {
         isLocating = false;
         updateGpsStatusBadge('denied', 'Please Enable Device GPS');
         showToast('⚠️ Please turn on Location (GPS) in your Android quick settings.');
-        anchorRadarPlantsToUser(12.9716, 77.5946);
         return;
       }
       // If native fails, continue to web fallback below
@@ -777,7 +717,6 @@ async function checkAndRequestLocationPermission(userInitiated = false) {
 
             updateGpsStatusBadge('denied', msg);
             showLocationPermissionBanner();
-            anchorRadarPlantsToUser(12.9716, 77.5946);
             if (userInitiated && err.code === 1) {
               showToast('📍 Location blocked. Please allow location in your browser site settings.');
             }
@@ -799,7 +738,6 @@ async function checkAndRequestLocationPermission(userInitiated = false) {
     clearTimeout(gpsWatchdogTimer);
     isLocating = false;
     updateGpsStatusBadge('denied', 'Geolocation Not Supported');
-    anchorRadarPlantsToUser(12.9716, 77.5946);
     showToast('Geolocation is not supported by this browser.');
   }
 }
@@ -997,7 +935,7 @@ function triggerWebFileInput() {
     };
     fileInput.click();
   } else {
-    simulatePhotoCapture("assets/plant_rose.png");
+    showToast("Photo picker is not available on this device", "error");
   }
 }
 
@@ -1006,17 +944,17 @@ function renderCameraControls(mode) {
   const viewfinder = document.querySelector(".camera-viewfinder");
   if (!cameraControls) return;
   cameraControls.innerHTML = "";
+  // The welcome hero (Take Photo / Gallery) is only shown before a photo is chosen
+  if (viewfinder) viewfinder.classList.toggle("is-initial", mode === "initial");
 
   if (mode === "live-stream") {
     cameraControls.innerHTML = `
-      <div style="display:flex; flex-direction:column; align-items:center; gap:12px; width:100%; position:relative; z-index:10;">
-        <div style="display:flex; justify-content:center; align-items:center; gap:20px; width:100%;">
-          <button class="btn-secondary" id="btn-switch-gallery" style="flex:1; max-width:130px; padding:10px; font-size:0.8rem; border-radius:12px;">🖼 Upload</button>
-          <button class="live-shutter-btn" id="btn-shutter" title="Take Photo">
-            <div class="live-shutter-inner"></div>
-          </button>
-          <button class="btn-secondary" id="btn-demo-sample" style="flex:1; max-width:130px; padding:10px; font-size:0.8rem; border-radius:12px;">🌹 Sample</button>
-        </div>
+      <div style="display:flex; justify-content:center; align-items:center; gap:20px; width:100%; position:relative; z-index:10;">
+        <button class="btn-secondary" id="btn-switch-gallery" style="flex:1; max-width:130px; padding:10px; font-size:0.8rem; border-radius:12px;">🖼 Gallery</button>
+        <button class="live-shutter-btn" id="btn-shutter" title="Take Photo">
+          <div class="live-shutter-inner"></div>
+        </button>
+        <div style="flex:1; max-width:130px;"></div>
       </div>`;
 
     const shutterBtn = document.getElementById("btn-shutter");
@@ -1025,59 +963,27 @@ function renderCameraControls(mode) {
     const galleryBtn = document.getElementById("btn-switch-gallery");
     if (galleryBtn) galleryBtn.onclick = triggerWebFileInput;
 
-    const sampleBtn = document.getElementById("btn-demo-sample");
-    if (sampleBtn) sampleBtn.onclick = () => simulatePhotoCapture("assets/plant_rose.png");
-
   } else if (mode === "initial") {
     if (viewfinder) {
-      viewfinder.style.backgroundImage = "none";
-      viewfinder.style.backgroundColor = "#111";
+      viewfinder.style.backgroundImage = "";
+      viewfinder.style.backgroundColor = "";
     }
-
-    cameraControls.innerHTML = `
-      <div class="camera-initial-menu" style="position:relative; z-index:10;">
-        <div style="display:flex; gap:10px; width:100%; margin-bottom:10px;">
-          <button class="btn-secondary" id="btn-gallery" style="flex:1;">🖼 Upload / Gallery</button>
-          <button class="btn-primary" id="btn-camera" style="flex:1;">📸 Open Camera</button>
-        </div>
-        <div style="display:flex; align-items:center; justify-content:center; gap:8px; font-size:0.75rem; color:#aaa;">
-          <span>Quick Demo:</span>
-          <button class="sample-pill" data-sample="assets/plant_rose.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🌹 Rose</button>
-          <button class="sample-pill" data-sample="assets/plant_aloe.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🪴 Aloe</button>
-          <button class="sample-pill" data-sample="assets/plant_banyan.png" style="background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:white; border-radius:12px; padding:3px 10px; cursor:pointer;">🌳 Banyan</button>
-        </div>
-      </div>`;
-
-    const camBtn = document.getElementById("btn-camera");
-    if (camBtn) camBtn.onclick = () => startCameraCapture();
-
-    const galBtn = document.getElementById("btn-gallery");
-    if (galBtn) galBtn.onclick = () => checkAndRequestGalleryPermission();
-
-    document.querySelectorAll(".sample-pill").forEach(pill => {
-      pill.onclick = () => {
-        simulatePhotoCapture(pill.getAttribute("data-sample"));
-      };
-    });
 
   } else if (mode === "preview") {
     state.selectedOrgan = state.selectedOrgan || "auto";
+    const organs = [
+      ["auto", "⚡ Auto"], ["flower", "🌸 Flower"], ["leaf", "🍃 Leaf"], ["fruit", "🍒 Fruit"], ["bark", "🪵 Bark"]
+    ];
 
     cameraControls.innerHTML = `
-      <div style="display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; position:relative; z-index:10;">
-        <div style="display:flex; align-items:center; gap:6px; font-size:0.75rem; color:var(--text-secondary);">
-          <span>Botanical Organ:</span>
-          <div class="organ-chips-row" style="display:flex; gap:4px;">
-            <button class="organ-chip ${state.selectedOrgan === "auto" ? "active" : ""}" data-organ="auto" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "auto" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">⚡ Auto</button>
-            <button class="organ-chip ${state.selectedOrgan === "flower" ? "active" : ""}" data-organ="flower" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "flower" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🌸 Flower</button>
-            <button class="organ-chip ${state.selectedOrgan === "leaf" ? "active" : ""}" data-organ="leaf" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "leaf" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🍃 Leaf</button>
-            <button class="organ-chip ${state.selectedOrgan === "fruit" ? "active" : ""}" data-organ="fruit" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "fruit" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🍒 Fruit</button>
-            <button class="organ-chip ${state.selectedOrgan === "bark" ? "active" : ""}" data-organ="bark" style="padding:3px 9px; font-size:0.75rem; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:${state.selectedOrgan === "bark" ? "var(--primary)" : "rgba(0,0,0,0.5)"}; color:white; cursor:pointer;">🪵 Bark</button>
-          </div>
+      <div class="camera-preview-panel">
+        <div class="organ-label">What part of the plant is this?</div>
+        <div class="organ-chips-row">
+          ${organs.map(([key, label]) => `<button class="organ-chip ${state.selectedOrgan === key ? "active" : ""}" data-organ="${key}">${label}</button>`).join("")}
         </div>
-        <div class="camera-preview-menu" style="display:flex; gap:10px; width:100%;">
+        <div class="camera-preview-menu">
           <button class="btn-secondary" id="btn-retake" style="flex:1;">🔄 Retake</button>
-          <button class="btn-primary" id="btn-use-photo" style="flex:2;">🌿 Identify with Pl@ntNet</button>
+          <button class="btn-primary" id="btn-use-photo" style="flex:2;">🌿 Identify Plant</button>
         </div>
       </div>`;
 
@@ -1088,14 +994,14 @@ function renderCameraControls(mode) {
       };
     });
 
-    document.getElementById("btn-retake").onclick = () => startCameraCapture();
+    document.getElementById("btn-retake").onclick = () => renderCameraControls("initial");
     document.getElementById("btn-use-photo").onclick = () => runIdentification(state.photoData, state.selectedOrgan);
 
   } else if (mode === "analyzing") {
     cameraControls.innerHTML = `
-      <div class="camera-analyzing-overlay" style="text-align:center; padding:15px; position:relative; z-index:10;">
-        <h3 style="color:var(--primary); margin-bottom:6px;">Consulting Pl@ntNet AI...</h3>
-        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">Matching floral morphology, venation, and botanical taxonomy against 30,000+ species.</p>
+      <div class="camera-preview-panel" style="text-align:center;">
+        <h3 style="color:var(--primary); margin-bottom:6px;">Identifying your plant...</h3>
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">Matching against 30,000+ species with Pl@ntNet.</p>
         <div class="loading-spinner" style="margin:0 auto;"></div>
       </div>`;
   }
@@ -1177,18 +1083,6 @@ async function checkAndRequestGalleryPermission() {
   }
 }
 
-function simulatePhotoCapture(imagePath) {
-  state.photoData = imagePath;
-  stopLiveVideoStream();
-  const viewfinder = document.querySelector(".camera-viewfinder");
-  if (viewfinder) {
-    viewfinder.style.backgroundImage = "url(" + imagePath + ")";
-    viewfinder.style.backgroundSize = "cover";
-    viewfinder.style.backgroundPosition = "center";
-  }
-  renderCameraControls("preview");
-}
-
 function initCameraFlow() {
   const overlay = document.querySelector(".ai-results-overlay");
   if (overlay) overlay.classList.remove("active");
@@ -1204,104 +1098,49 @@ window.checkAndRequestGalleryPermission = checkAndRequestGalleryPermission;
 
 
 async function runIdentification(photoPath, organ = "auto") {
+  if (!photoPath) {
+    showToast("Take or choose a photo first", "error");
+    renderCameraControls("initial");
+    return;
+  }
+  if (!state.backendConnected) {
+    showToast("You're offline. Connect to the internet to identify plants.", "error");
+    return;
+  }
+
   renderCameraControls("analyzing");
-  
   try {
-    let identificationResult = null;
-    let identifyError = null;
-    const isSamplePhoto = !photoPath || photoPath.startsWith("assets/");
+    const resp = await apiFetch("/identify", {
+      method: "POST",
+      body: JSON.stringify({ image: photoPath, organ: organ || "auto" })
+    }, 45000);
+    const data = await resp.json().catch(() => null);
 
-    if (state.backendConnected) {
-      const resp = await fetch(API_BASE + "/identify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          image: photoPath || "assets/plant_rose.png",
-          organ: organ || "auto"
-        })
-      });
+    if (!resp.ok) throw new Error((data && (data.error || data.message)) || "Server error " + resp.status);
+    if (!data || !data.success) throw new Error((data && data.message) || "No botanical match found. Try a clearer photo of a flower or leaf.");
 
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.success) {
-          identificationResult = {
-            commonName: data.commonName,
-            scientificName: data.scientificName,
-            confidence: data.confidence,
-            confidenceScore: data.confidenceScore,
-            family: data.family,
-            detectedOrgan: data.detectedOrgan,
-            description: data.description,
-            care: data.care,
-            sun: data.sun,
-            water: data.water,
-            category: data.category,
-            candidates: data.candidates || [],
-            remainingRequests: data.remainingRequests,
-            verified: true,
-            image: photoPath || "assets/plant_rose.png"
-          };
-        } else {
-          identifyError = data.message || "No botanical match found.";
-        }
-      } else {
-        const errData = await resp.json().catch(() => null);
-        identifyError = (errData && errData.error) || ("Server error " + resp.status);
-      }
-    } else {
-      identifyError = "Offline: cannot reach the identification server.";
-    }
-
-    // Real photos must not get a fake result; show the error and let the user retry
-    if (!identificationResult && !isSamplePhoto) {
-      showToast("Identification failed: " + identifyError, "error");
-      renderCameraControls("preview");
-      return;
-    }
-
-    if (!identificationResult) {
-      // Offline fallback
-      identificationResult = {
-        commonName: "Tea rose",
-        scientificName: "Rosa × odorata",
-        confidence: "92.4%",
-        confidenceScore: 0.924,
-        family: "Rosaceae",
-        detectedOrgan: organ !== "auto" ? organ : "flower",
-        description: "Hardy perennial shrub with fragrant multi-petaled blooms.",
-        care: "Requires 6+ hours of direct sunlight, well-draining soil, and consistent moisture.",
-        sun: "Full Sun",
-        water: "Moderate, damp soil",
-        category: "flowers",
-        candidates: [
-          { scientificName: "Rosa × odorata", commonNames: ["Tea rose"], score: "92.4%", family: "Rosaceae" }
-        ],
-        verified: true,
-        image: photoPath || "assets/plant_rose.png"
-      };
-    }
-
-    displayIdentificationResult(identificationResult);
+    displayIdentificationResult({
+      commonName: data.commonName,
+      scientificName: data.scientificName,
+      confidence: data.confidence,
+      confidenceScore: data.confidenceScore,
+      family: data.family,
+      detectedOrgan: data.detectedOrgan,
+      description: data.description,
+      care: data.care,
+      sun: data.sun,
+      water: data.water,
+      category: data.category,
+      candidates: data.candidates || [],
+      remainingRequests: data.remainingRequests,
+      image: photoPath
+    });
+    renderCameraControls("preview");
   } catch (err) {
     console.error("Pl@ntNet identification error:", err);
-    if (photoPath && !photoPath.startsWith("assets/")) {
-      showToast("Identification failed: " + (err.message || "network error"), "error");
-      renderCameraControls("preview");
-      return;
-    }
-    displayIdentificationResult({
-      commonName: "Field Specimen",
-      scientificName: "Flora taxonomy",
-      confidence: "85.0%",
-      confidenceScore: 0.85,
-      family: "Botanical",
-      detectedOrgan: "leaf",
-      description: "Specimen logged during field excursion.",
-      care: "Ensure natural sunlight and ambient hydration.",
-      category: "flowers",
-      verified: true,
-      image: photoPath || "assets/plant_banyan.png"
-    });
+    const msg = err.name === "AbortError" ? "the request timed out" : err.message;
+    showToast("Identification failed: " + msg, "error");
+    renderCameraControls("preview");
   }
 }
 
@@ -1325,7 +1164,7 @@ function displayIdentificationResult(result) {
         '<div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;">' +
           result.candidates.slice(1, 3).map(c => 
             '<span style="font-size: 0.7rem; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 6px; color: var(--text-secondary);">' +
-              (c.commonNames?.[0] || c.scientificName) + ' (' + c.score + ')' +
+              escapeHtml((c.commonNames?.[0] || c.scientificName) + ' (' + c.score + ')') +
             '</span>'
           ).join('') +
         '</div>' +
@@ -1342,11 +1181,11 @@ function displayIdentificationResult(result) {
 
   const detailsHtml = 
     '<div class="result-details" style="padding: 0.6rem 0; font-size: 0.82rem; color: var(--text-secondary);">' +
-      '<p style="margin-bottom:4px;"><b>Family:</b> ' + result.family + (result.detectedOrgan ? ' • <b>Organ:</b> ' + result.detectedOrgan : '') + '</p>' +
-      (result.sun ? '<p style="margin-bottom:4px;"><b>Sunlight:</b> ' + result.sun + '</p>' : '') +
-      (result.water ? '<p style="margin-bottom:4px;"><b>Water:</b> ' + result.water + '</p>' : '') +
-      '<p style="margin-bottom:4px;"><b>Care:</b> ' + result.care + '</p>' +
-      '<p><b>Notes:</b> ' + result.description + '</p>' +
+      '<p style="margin-bottom:4px;"><b>Family:</b> ' + escapeHtml(result.family) + (result.detectedOrgan ? ' • <b>Organ:</b> ' + escapeHtml(result.detectedOrgan) : '') + '</p>' +
+      (result.sun ? '<p style="margin-bottom:4px;"><b>Sunlight:</b> ' + escapeHtml(result.sun) + '</p>' : '') +
+      (result.water ? '<p style="margin-bottom:4px;"><b>Water:</b> ' + escapeHtml(result.water) + '</p>' : '') +
+      '<p style="margin-bottom:4px;"><b>Care:</b> ' + escapeHtml(result.care) + '</p>' +
+      '<p><b>Notes:</b> ' + escapeHtml(result.description) + '</p>' +
       candidatesHtml +
       quotaBadgeHtml +
     '</div>';
@@ -1373,110 +1212,66 @@ function displayIdentificationResult(result) {
 
 // Handling when an identified plant is submitted
 async function handlePlantSubmission(result) {
-  // If backend is connected, persist to MariaDB
-  if (state.backendConnected) {
-    try {
-      const resp = await fetch(API_BASE + "/feeds/sighting", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          commonName: result.commonName,
-          scientificName: result.scientificName,
-          confidence: result.confidence,
-          family: result.family,
-          description: result.description,
-          image: result.image,
-          category: result.category || "flowers"
-        })
-      });
+  if (!(await ensureSession())) {
+    showToast("Sign in to save your discovery and earn XP 🌱", "error");
+    renderCameraControls("preview");
+    openAuthModal();
+    return;
+  }
+  if (!state.backendConnected) {
+    showToast("You're offline. Connect to the internet to submit this sighting.", "error");
+    renderCameraControls("preview");
+    return;
+  }
 
-      if (resp.ok) {
-        const data = await resp.json();
-        state.userStats.discoveredCount = data.userStats.discoveredCount;
-        state.userStats.xp = data.userStats.xp;
-        state.userStats.totalPoints = data.userStats.totalPoints;
-        state.userStats.milestoneAchieved = data.userStats.milestoneAchieved;
-        updateProfileUI();
+  showToast("Saving your discovery...");
+  try {
+    const resp = await apiFetch("/feeds/sighting", {
+      method: "POST",
+      body: JSON.stringify({
+        commonName: result.commonName,
+        scientificName: result.scientificName,
+        confidence: result.confidence,
+        family: result.family,
+        description: result.description,
+        sun: result.sun,
+        water: result.water,
+        image: result.image,
+        category: result.category || "flowers",
+        lat: state.currentLocation ? state.currentLocation.lat : null,
+        lng: state.currentLocation ? state.currentLocation.lng : null
+      })
+    }, 30000);
 
-        state.feeds.unshift(data.sighting);
-        if (data.achievement) {
-          state.feeds.unshift(data.achievement);
-        }
-        renderFeeds();
-
-        if (data.milestoneTriggered) {
-          showToast("🏆 Milestone Reached: 10 Plants Identified! Saved to MariaDB & published to Feed.", 4500);
-        } else {
-          showToast("☘ Plant logged to MariaDB! +250 XP earned. Total discovered: " + state.userStats.discoveredCount);
-        }
-        changeTab("feeds");
-        return;
-      }
-    } catch (err) {
-      console.warn("Failed to persist sighting to MariaDB, falling back to local:", err);
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok || !data || !data.success) {
+      throw new Error((data && data.error) || ("Server error " + resp.status));
     }
-  }
 
-  // Local fallback
-  state.userStats.discoveredCount += 1;
-  state.userStats.xp += 250;
-  state.userStats.totalPoints += 250;
-  updateProfileUI();
+    applyUserStats(data.userStats);
 
-  const newSighting = {
-    id: "sighting-" + Date.now(),
-    type: "sighting",
-    user: "Explorer_Forest_9 (You)",
-    avatar: "assets/avatar_explorer.png",
-    badgeText: "New Discovery",
-    title: result.commonName + " (" + result.scientificName + ")",
-    subtitle: "Identified nearby • Just now",
-    image: result.image,
-    family: result.family,
-    votes: 1,
-    verified: false,
-    status: "Awaiting Community Consensus"
-  };
-  state.feeds.unshift(newSighting);
-
-  if (state.userStats.discoveredCount === 10) {
-    triggerMilestoneAchievement(10);
-  } else {
-    showToast("☘ Plant logged! +250 XP earned. Total discovered: " + state.userStats.discoveredCount);
-  }
-
-  changeTab("feeds");
-}
-
-// Milestone Achievement Trigger
-function triggerMilestoneAchievement(milestoneCount) {
-  state.userStats.milestoneAchieved = true;
-  updateProfileUI();
-
-  // Check user privacy setting: "Publish achievements to feed"
-  if (state.settings.publishAchievementsToFeed) {
-    const milestonePost = {
-      id: 'achievement-' + Date.now(),
-      type: 'achievement',
-      user: 'Explorer_Forest_9 (You)',
-      avatar: 'assets/avatar_explorer.png',
-      badgeText: 'Milestone',
-      title: '🏆 Reached ' + milestoneCount + ' Plants Identified!',
-      subtitle: 'Milestone Achievement • Just now',
-      description: 'Explorer_Forest_9 just reached the major milestone of identifying ' + milestoneCount + ' distinct plant specimens in the wild! Unlocked the "Deca Botanist" achievement badge.',
-      icon: '🏆',
-      cheers: 1,
-      cheered: false,
-      isUser: true
-    };
-    
-    // Insert milestone at the very top of the feed
-    state.feeds.unshift(milestonePost);
+    state.feeds.unshift(data.sighting);
+    if (data.achievement) state.feeds.unshift(data.achievement);
+    if (data.sighting.lat != null) {
+      state.radarPlants.unshift(data.sighting);
+      updateRadarDistances();
+      renderMapPlantMarkers();
+    }
     renderFeeds();
 
-    showToast('🏆 Milestone Reached: 10 Plants Identified! Achievement published to Community Feed.', 4500);
-  } else {
-    showToast('🏆 Milestone Reached: 10 Plants Identified! (Not published to feed — disabled in Settings)', 4500);
+    if (data.milestoneTriggered) {
+      showToast("🏆 Milestone reached: 10 plants identified!", 4500);
+    } else if (data.leveledUp) {
+      showToast("⬆️ Level up! You're now level " + state.userStats.level + ". +250 XP", 4000);
+    } else {
+      showToast("☘ Sighting saved! +250 XP");
+    }
+    renderCameraControls("initial");
+    changeTab("feeds");
+  } catch (err) {
+    console.warn("Failed to save sighting:", err);
+    showToast("Could not save sighting: " + err.message, "error");
+    renderCameraControls("preview");
   }
 }
 
@@ -1494,117 +1289,120 @@ function renderFeeds() {
   });
 
   if (filteredFeeds.length === 0) {
-    container.innerHTML = '<div style="text-align:center; padding: 2rem; color: var(--text-secondary);">No feed items found.</div>';
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🌱</div>
+        <div class="empty-state-title">No sightings yet</div>
+        <div class="empty-state-desc">Capture a plant from the Map tab to post the first discovery.</div>
+      </div>`;
     return;
   }
 
   container.innerHTML = filteredFeeds.map(item => {
+    const userLabel = escapeHtml(item.user) + (item.isUser ? ' (You)' : '');
+    const when = item.createdAt ? timeAgo(item.createdAt) : 'Just now';
     if (item.type === 'achievement') {
       return `
-        <div class="feed-achievement-card" data-id="${item.id}">
+        <div class="feed-achievement-card" data-id="${escapeHtml(item.id)}">
           <div class="feed-achievement-header">
             <div class="feed-achievement-user">
-              <div class="feed-achievement-avatar" style="background-image: url('${item.avatar}')"></div>
-              <span>${item.user}</span>
+              <div class="feed-achievement-avatar" style="background-image: url('${escapeHtml(resolveImageUrl(item.avatar))}')"></div>
+              <span>${userLabel}</span>
             </div>
-            <span>${item.badgeText}</span>
+            <span>${escapeHtml(item.badgeText)}</span>
           </div>
           <div class="feed-achievement-body">
-            <div class="feed-achievement-badge-icon">${item.icon}</div>
+            <div class="feed-achievement-badge-icon">${escapeHtml(item.icon || '🏆')}</div>
             <div class="feed-achievement-details">
-              <div class="feed-achievement-title">${item.title}</div>
-              <div class="feed-achievement-desc">${item.description}</div>
+              <div class="feed-achievement-title">${escapeHtml(item.title)}</div>
+              <div class="feed-achievement-desc">${escapeHtml(item.description)}</div>
             </div>
           </div>
           <div class="feed-achievement-footer">
-            <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 500;">${item.subtitle}</span>
-            <span class="milestone-badge-pill">Verified Milestone 🌟</span>
-          </div>
-        </div>
-      `;
-    } else {
-      return `
-        <div class="verification-card" data-id="${item.id}">
-          <div class="verification-header">
-            <span>${item.badgeText} • ${item.user}</span>
-          </div>
-          <div class="verification-image" style="background-image: url('${item.image}')"></div>
-          <div class="verification-content">
-            <div class="verification-title">${item.title}</div>
-            <div class="verification-meta">${item.subtitle}</div>
-
-            <div class="verification-meta-stats">
-              <span>Status: ${item.status}</span>
-              <span>${item.votes} community vouches</span>
-            </div>
+            <span style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 500;">${escapeHtml(when)}</span>
+            <span class="milestone-badge-pill">Milestone 🌟</span>
           </div>
         </div>
       `;
     }
+    const image = resolveImageUrl(item.image);
+    return `
+      <div class="verification-card" data-id="${escapeHtml(item.id)}">
+        <div class="verification-header">
+          <span>${escapeHtml(item.badgeText)} • ${userLabel}</span>
+        </div>
+        ${image
+          ? `<div class="verification-image" style="background-image: url('${escapeHtml(image)}')"></div>`
+          : `<div class="verification-image verification-image-empty">🌿</div>`}
+        <div class="verification-content">
+          <div class="verification-title">${escapeHtml(item.title)}</div>
+          <div class="verification-meta">${escapeHtml((item.subtitle ? item.subtitle + ' • ' : '') + when)}</div>
+
+          <div class="verification-meta-stats">
+            <span>Status: ${escapeHtml(item.status)}</span>
+            <span>${item.votes} community ${item.votes === 1 ? 'vouch' : 'vouches'}</span>
+          </div>
+          ${item.isUser ? '' : `<button class="btn-secondary feed-vouch-btn" onclick="vouchSighting('${escapeHtml(item.id)}')">✓ Vouch for this ID (+50 XP)</button>`}
+        </div>
+      </div>
+    `;
   }).join('');
+}
+
+function timeAgo(dateValue) {
+  const then = new Date(dateValue).getTime();
+  if (!Number.isFinite(then)) return 'Just now';
+  const mins = Math.floor((Date.now() - then) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return mins + 'm ago';
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + 'h ago';
+  const days = Math.floor(hours / 24);
+  return days < 30 ? days + 'd ago' : new Date(then).toLocaleDateString();
 }
 
 window.toggleCheer = async function(feedId) {
   const item = state.feeds.find(f => f.id === feedId);
   if (!item) return;
-
-  if (state.backendConnected) {
-    try {
-      const resp = await fetch(API_BASE + "/feeds/" + feedId + "/cheer", { method: "POST" });
-      if (resp.ok) {
-        const data = await resp.json();
-        item.cheers = data.cheers;
-        item.cheered = data.cheered;
-        renderFeeds();
-        if (item.cheered) showToast("👏 Cheered on this achievement (Saved to MariaDB)!");
-        return;
-      }
-    } catch (err) {
-      console.warn("Cheer API error, using local fallback:", err);
-    }
+  if (!(await ensureSession())) {
+    showToast("Sign in to cheer achievements", "error");
+    openAuthModal();
+    return;
   }
-
-  if (!item.cheered) {
-    item.cheers += 1;
-    item.cheered = true;
+  try {
+    const resp = await apiFetch("/feeds/" + encodeURIComponent(feedId) + "/cheer", { method: "POST" });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error((data && data.error) || "Server error " + resp.status);
+    item.cheers = data.cheers;
+    item.cheered = data.cheered;
+    renderFeeds();
     showToast("👏 Cheered on this achievement!");
-  } else {
-    item.cheers -= 1;
-    item.cheered = false;
+  } catch (err) {
+    showToast("Could not cheer: " + err.message, "error");
   }
-  renderFeeds();
 };
 
 window.vouchSighting = async function(feedId) {
-  const item = state.feeds.find(f => f.id === feedId);
-  if (!item) return;
-
-  if (state.backendConnected) {
-    try {
-      const resp = await fetch(API_BASE + "/feeds/" + feedId + "/vote", { method: "POST" });
-      if (resp.ok) {
-        const data = await resp.json();
-        item.votes = data.feed.votes;
-        state.userStats.reviewedCount = data.userStats.reviewedCount;
-        state.userStats.xp = data.userStats.xp;
-        state.userStats.totalPoints = data.userStats.totalPoints;
-        updateProfileUI();
-        renderFeeds();
-        showToast("✓ Vouched identification in MariaDB! +50 XP awarded.");
-        return;
-      }
-    } catch (err) {
-      console.warn("Vouch API error, using local fallback:", err);
-    }
+  if (!(await ensureSession())) {
+    showToast("Sign in to vouch for sightings", "error");
+    openAuthModal();
+    return;
   }
-
-  item.votes += 1;
-  state.userStats.reviewedCount += 1;
-  state.userStats.xp += 50;
-  state.userStats.totalPoints += 50;
-  updateProfileUI();
-  showToast("✓ Vouched identification! +50 XP awarded.");
-  renderFeeds();
+  try {
+    const resp = await apiFetch("/feeds/" + encodeURIComponent(feedId) + "/vote", { method: "POST" });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error((data && data.error) || "Server error " + resp.status);
+    [state.feeds, state.radarPlants].forEach(list => {
+      const item = list.find(f => f.id === feedId);
+      if (item) Object.assign(item, { votes: data.feed.votes, verified: data.feed.verified, status: data.feed.status });
+    });
+    applyUserStats(data.userStats);
+    renderFeeds();
+    renderRadarList();
+    showToast("✓ Vouched! +50 XP");
+  } catch (err) {
+    showToast(err.message, "error");
+  }
 };
 
 // --- RADAR IMPLEMENTATION ---
@@ -1613,59 +1411,77 @@ function renderRadarList() {
   const listContainer = document.querySelector('.radar-list');
   if (!listContainer) return;
 
-  listContainer.innerHTML = state.radarPlants.map(plant => `
-    <div class="stat-box" style="display:flex; align-items:center; gap:12px; padding:10px 14px; margin-bottom:8px; cursor:pointer;" onclick="openSpecimenDetailsById('${plant.id}')">
-      <div style="width:44px; height:44px; border-radius:8px; background-image:url('${plant.image}'); background-size:cover; background-position:center; flex-shrink:0;"></div>
-      <div style="flex:1; text-align:left;">
-        <div style="font-size:0.88rem; font-weight:700; color:var(--text-primary);">${plant.name}</div>
-        <div style="font-size:0.75rem; color:var(--text-secondary);">${plant.scientific}</div>
+  if (state.radarPlants.length === 0) {
+    listContainer.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">📡</div>
+        <div class="empty-state-title">No plants spotted nearby yet</div>
+        <div class="empty-state-desc">Sightings you and other explorers capture will appear here.</div>
+      </div>`;
+    return;
+  }
+
+  listContainer.innerHTML = state.radarPlants.map(plant => {
+    const image = resolveImageUrl(plant.image);
+    return `
+    <div class="stat-box" style="display:flex; align-items:center; gap:12px; padding:10px 14px; margin-bottom:8px; cursor:pointer;" onclick="openSpecimenDetailsById('${escapeHtml(plant.id)}')">
+      <div style="width:44px; height:44px; border-radius:8px; background:#e8f5e9 center/cover no-repeat; ${image ? `background-image:url('${escapeHtml(image)}');` : ''} flex-shrink:0; display:flex; align-items:center; justify-content:center;">${image ? '' : '🌿'}</div>
+      <div style="flex:1; text-align:left; min-width:0;">
+        <div style="font-size:0.88rem; font-weight:700; color:var(--text-primary);">${escapeHtml(plant.commonName || plant.title)}</div>
+        <div style="font-size:0.75rem; color:var(--text-secondary); font-style:italic;">${escapeHtml(plant.scientific || '')}</div>
       </div>
-      <div style="text-align:right;">
-        <span class="milestone-badge-pill" style="font-size:0.7rem;">${plant.dist}</span>
-      </div>
-    </div>
-  `).join('');
+      ${plant.dist ? `<div style="text-align:right;"><span class="milestone-badge-pill" style="font-size:0.7rem;">${escapeHtml(plant.dist)}</span></div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 // --- SPECIMEN DETAILS DRAWER ---
 
 window.openSpecimenDetailsById = function(plantId) {
-  const plant = state.radarPlants.find(p => p.id === plantId);
+  const plant = state.radarPlants.find(p => p.id === plantId) || state.feeds.find(p => p.id === plantId);
   if (plant) openSpecimenDetails(plant);
 };
 
 function openSpecimenDetails(plant) {
   const sheet = document.querySelector('.detail-bottom-sheet');
   if (!sheet) return;
+  state.selectedPlantId = plant.id;
 
-  sheet.querySelector('.detail-common-name').textContent = plant.name;
-  sheet.querySelector('.detail-scientific-name').textContent = plant.scientific;
-  
+  sheet.querySelector('.detail-common-name').textContent = plant.commonName || plant.title;
+  sheet.querySelector('.detail-scientific-name').textContent = plant.scientific || '';
+
   const headerGrad = sheet.querySelector('.detail-image-grad');
   if (headerGrad) {
-    headerGrad.style.backgroundImage = 'linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.85)), url(' + plant.image + ')';
+    const image = resolveImageUrl(plant.image);
+    headerGrad.style.backgroundImage = image
+      ? 'linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.85)), url("' + image + '")'
+      : 'linear-gradient(135deg, #1b5e20, #43a047)';
     headerGrad.style.backgroundSize = 'cover';
     headerGrad.style.backgroundPosition = 'center';
   }
 
-  // Populate pills
   const pillContainer = document.getElementById('detail-pill-container');
   if (pillContainer) {
-    pillContainer.innerHTML = `
-      <span class="detail-pill">${plant.rarity || 'Wild Flora'}</span>
-      <span class="detail-pill">${plant.family || 'Botanical'}</span>
-      <span class="detail-pill">${plant.category || 'General'}</span>
-    `;
+    pillContainer.innerHTML = [plant.category, plant.family, plant.confidence ? plant.confidence + ' match' : null]
+      .filter(Boolean)
+      .map(t => `<span class="detail-pill">${escapeHtml(t)}</span>`)
+      .join('');
   }
 
-  document.getElementById('detail-edible').textContent = plant.edible || 'Non-edible';
-  document.getElementById('detail-medicinal').textContent = plant.medicinal || 'None';
-  document.getElementById('detail-desc').textContent = plant.desc || 'Specimen documented by community botanists.';
-  document.getElementById('detail-sun').textContent = plant.sun || 'Moderate';
-  document.getElementById('detail-water').textContent = plant.water || 'Regular';
-  document.getElementById('detail-region').textContent = 'Subtropical / Urban';
-  document.getElementById('detail-flowering').textContent = plant.flowering || 'Spring';
-  document.getElementById('detail-fruiting').textContent = plant.fruiting || 'Autumn';
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value || 'Unknown';
+  };
+  setText('detail-desc', plant.description || 'No notes for this sighting yet.');
+  setText('detail-sun', plant.sun);
+  setText('detail-water', plant.water);
+  setText('detail-spotted-by', plant.user ? plant.user + (plant.isUser ? ' (You)' : '') : '');
+  setText('detail-distance', plant.dist || (plant.createdAt ? timeAgo(plant.createdAt) : ''));
+  setText('detail-status', plant.status);
+  setText('detail-votes', plant.votes + ' community ' + (plant.votes === 1 ? 'vouch' : 'vouches'));
+
+  const voteBtn = document.getElementById('detail-vote-action-btn');
+  if (voteBtn) voteBtn.style.display = plant.isUser ? 'none' : '';
 
   sheet.classList.add('active');
 }
@@ -1678,38 +1494,42 @@ function closeSpecimenDetails() {
 // --- PROFILE & SETTINGS UI SYNC ---
 
 function updateProfileUI() {
-  const discCount = document.getElementById('profile-discovered-count');
-  const revCount = document.getElementById('profile-verified-count');
-  const milestoneBadge = document.getElementById('milestone-status-badge');
-  const milestoneFill = document.getElementById('milestone-bar-fill');
-  const milestoneSubtext = document.getElementById('milestone-subtext');
-  
-  if (discCount) discCount.textContent = state.userStats.discoveredCount;
-  if (revCount) revCount.textContent = state.userStats.reviewedCount;
+  const stats = state.userStats;
+  const setText = (id, value) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  };
+
+  setText('profile-discovered-count', stats.discoveredCount);
+  setText('profile-verified-count', stats.reviewedCount);
+  setText('profile-total-points', Number(stats.totalPoints).toLocaleString());
+  setText('profile-rank', 'Botanist Rank (Lv. ' + stats.level + ')');
+  setText('profile-next-level', stats.level + 1);
+
+  document.querySelectorAll('.level-val').forEach(el => { el.textContent = 'Lv ' + stats.level; });
+  document.querySelectorAll('.xp-indicator').forEach(el => {
+    el.textContent = stats.xp + ' / ' + stats.xpToNext + ' XP';
+  });
+  const xpFill = document.getElementById('profile-xp-fill');
+  if (xpFill) xpFill.style.width = Math.min(100, Math.round((stats.xp / Math.max(1, stats.xpToNext)) * 100)) + '%';
 
   // Milestone Progress
-  const count = state.userStats.discoveredCount;
-  const progressPercent = Math.min(100, Math.round((count / 10) * 100));
-  
-  if (milestoneBadge) {
-    milestoneBadge.textContent = count >= 10 ? 'Completed 🎉' : count + ' / 10';
-  }
-  if (milestoneFill) {
-    milestoneFill.style.width = progressPercent + '%';
-  }
-  if (milestoneSubtext) {
-    if (count >= 10) {
-      milestoneSubtext.textContent = 'Milestone achieved! 10 plants identified in the field.';
-    } else {
-      const remaining = 10 - count;
-      milestoneSubtext.textContent = remaining + ' more ' + (remaining === 1 ? 'discovery' : 'discoveries') + ' to reach milestone!';
-    }
+  const count = stats.discoveredCount;
+  setText('milestone-status-badge', count >= 10 ? 'Completed 🎉' : count + ' / 10');
+  const milestoneFill = document.getElementById('milestone-bar-fill');
+  if (milestoneFill) milestoneFill.style.width = Math.min(100, Math.round((count / 10) * 100)) + '%';
+  if (count >= 10) {
+    setText('milestone-subtext', 'Milestone achieved! 10 plants identified in the field.');
+  } else {
+    const remaining = 10 - count;
+    setText('milestone-subtext', remaining + ' more ' + (remaining === 1 ? 'discovery' : 'discoveries') + ' to reach milestone!');
   }
 
-  // Update top bar score badge
-  const scoreBadges = document.querySelectorAll('.xp-indicator');
-  scoreBadges.forEach(badge => {
-    badge.textContent = state.userStats.xp + ' / ' + state.userStats.xpToNext + ' XP';
+  // Badges unlock by number of discoveries
+  document.querySelectorAll('.badge-icon-wrap[data-unlock-at]').forEach(badge => {
+    const unlocked = count >= parseInt(badge.getAttribute('data-unlock-at'), 10);
+    badge.classList.toggle('unlocked', unlocked);
+    badge.classList.toggle('locked', !unlocked);
   });
 }
 
@@ -1766,11 +1586,9 @@ function initApp() {
   // Detail sheet vote button
   const sheetVoteBtn = document.getElementById('detail-vote-action-btn');
   if (sheetVoteBtn) {
-    sheetVoteBtn.onclick = () => {
-      state.userStats.reviewedCount += 1;
-      state.userStats.xp += 50;
-      updateProfileUI();
-      showToast('✓ Specimen identification vouched! +50 XP');
+    sheetVoteBtn.onclick = async () => {
+      if (!state.selectedPlantId) return;
+      await vouchSighting(state.selectedPlantId);
       closeSpecimenDetails();
     };
   }
@@ -1792,11 +1610,10 @@ function initApp() {
     publishToggle.addEventListener("change", async (e) => {
       state.settings.publishAchievementsToFeed = e.target.checked;
       localStorage.setItem("plantgo_publish_feed", e.target.checked ? "true" : "false");
-      if (state.backendConnected) {
+      if (state.backendConnected && getSessionToken()) {
         try {
-          await fetch(API_BASE + "/settings", {
+          await apiFetch("/settings", {
             method: "PUT",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               publishAchievementsToFeed: state.settings.publishAchievementsToFeed,
               highAccuracyGps: state.settings.highAccuracyGps
@@ -1819,23 +1636,6 @@ function initApp() {
     gpsToggle.addEventListener('change', (e) => {
       state.settings.highAccuracyGps = e.target.checked;
       showToast(e.target.checked ? 'High accuracy GPS enabled' : 'Battery saver GPS mode active');
-    });
-  }
-
-  // Quick Discover Button on Profile Screen
-  const quickDiscoverBtn = document.getElementById('btn-quick-discover');
-  if (quickDiscoverBtn) {
-    quickDiscoverBtn.addEventListener('click', () => {
-      handlePlantSubmission({
-        commonName: "Chinese Rose",
-        scientificName: "Rosa chinensis",
-        confidence: "99.1%",
-        family: "Rosaceae",
-        description: "Vibrant flower specimen observed in local botanical habitat.",
-        care: "Full sun and fertile soil.",
-        verified: true,
-        image: 'assets/plant_rose.png'
-      });
     });
   }
 
@@ -1880,8 +1680,11 @@ function initFirebaseAuth() {
       fbAuth = firebase.auth();
 
       fbAuth.onAuthStateChanged((user) => {
-        currentUser = user;
-        updateAuthUI(user);
+        if (user) {
+          signInToBackendWithFirebase(user);
+        } else if (currentUser && currentUser.provider === "firebase") {
+          clearSignedInUser();
+        }
       });
       console.log("☘ Firebase Auth initialized successfully");
     } else {
@@ -1927,7 +1730,7 @@ function openAuthModal() {
     const titleEl = document.getElementById('auth-modal-title');
     if (titleEl) titleEl.textContent = 'Account Profile';
     const subEl = document.getElementById('auth-modal-subtitle');
-    if (subEl) subEl.textContent = 'Connected with Firebase Authentication';
+    if (subEl) subEl.textContent = currentUser.provider === 'google' ? 'Signed in with Google' : 'Signed in with email';
   } else {
     if (authForm) authForm.style.display = 'flex';
     if (loggedInView) loggedInView.style.display = 'none';
@@ -2053,23 +1856,6 @@ async function handleAuthSubmit(e) {
 
 const GOOGLE_CLIENT_ID = "REDACTED.apps.googleusercontent.com";
 
-// Decode JWT token helper for Google credentials
-function parseJwt(token) {
-  try {
-    const base64Url = token.split(".")[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map(c => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join("")
-    );
-    return JSON.parse(jsonPayload);
-  } catch (e) {
-    return null;
-  }
-}
-
 function initGoogleAuth() {
   if (typeof google !== "undefined" && google.accounts && google.accounts.id) {
     google.accounts.id.initialize({
@@ -2112,68 +1898,95 @@ function initGoogleAuth() {
   }
 }
 
+// Stores the backend session for a verified account and loads its real data
+function completeSignIn(data, provider) {
+  setSessionToken(data.sessionToken);
+  const u = data.user;
+  currentUser = {
+    displayName: u.username || "Explorer",
+    email: u.email || "",
+    photoURL: u.avatar || "",
+    id: u.id,
+    provider
+  };
+  localStorage.setItem("plantgo_saved_user", JSON.stringify(currentUser));
+  applyUserStats(u);
+  updateAuthUI(currentUser);
+  loadUserData();
+}
+
+async function signInToBackendWithFirebase(fbUser, notify = true) {
+  try {
+    const idToken = await fbUser.getIdToken();
+    const res = await fetchWithTimeout(API_BASE + "/auth/firebase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: idToken })
+    }, 10000);
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.sessionToken) {
+      throw new Error((data && data.error) || "Server error " + res.status);
+    }
+    completeSignIn(data, "firebase");
+    return true;
+  } catch (err) {
+    console.warn("Could not connect Firebase account to backend:", err);
+    if (notify) showToast("Couldn't load your PlantGo profile: " + err.message, "error");
+    return false;
+  }
+}
+
+// Makes sure a backend session exists, retrying the Firebase exchange if needed
+async function ensureSession() {
+  if (getSessionToken()) return true;
+  if (fbAuth && fbAuth.currentUser) return signInToBackendWithFirebase(fbAuth.currentUser);
+  return false;
+}
+
 async function handleGoogleCredentialResponse(response) {
   const idToken = response.credential;
   if (!idToken) return;
 
-  const payload = parseJwt(idToken);
-  showToast("Verifying Google account...", "info");
-
-  let backendUser = null;
+  showToast("Verifying Google account...");
   try {
     const res = await fetchWithTimeout(API_BASE + "/auth/google", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: idToken })
-    }, 8000);
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.user) {
-        backendUser = data.user;
-      }
+    }, 10000);
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.sessionToken) {
+      throw new Error((data && data.error) || "Server error " + res.status);
     }
+    completeSignIn(data, "google");
+    closeAuthModal();
+    showToast("Welcome, " + currentUser.displayName + " ☘", "success");
   } catch (err) {
-    console.warn("Backend auth verification unavailable, continuing with client identity:", err);
+    console.warn("Google sign-in failed:", err);
+    showToast("Google sign-in failed: " + err.message, "error");
   }
+}
 
-  const user = {
-    displayName: backendUser?.username || payload?.name || "Explorer",
-    email: backendUser?.email || payload?.email || "",
-    photoURL: backendUser?.avatar || payload?.picture || "",
-    id: backendUser?.id || payload?.sub || "google-user",
-    provider: "google"
-  };
-
-  // Sync state.userStats if backend provided them
-  if (backendUser) {
-    state.userStats.discoveredCount = backendUser.discoveredCount ?? state.userStats.discoveredCount;
-    state.userStats.reviewedCount = backendUser.reviewedCount ?? state.userStats.reviewedCount;
-    state.userStats.totalPoints = backendUser.totalPoints ?? state.userStats.totalPoints;
-    state.userStats.level = backendUser.level ?? state.userStats.level;
-    state.userStats.xp = backendUser.xp ?? state.userStats.xp;
-    state.userStats.xpToNext = backendUser.xpToNext ?? state.userStats.xpToNext;
-    state.userStats.milestoneAchieved = Boolean(backendUser.milestoneAchieved);
-    updateProfileUI();
-  }
-
-  currentUser = user;
-  localStorage.setItem("plantgo_saved_user", JSON.stringify(user));
-  updateAuthUI(user);
-  closeAuthModal();
-  showToast("Welcome, " + user.displayName + " ☘", "success");
+function clearSignedInUser() {
+  localStorage.removeItem("plantgo_saved_user");
+  setSessionToken(null);
+  currentUser = null;
+  applyUserStats(null);
+  updateAuthUI(null);
+  if (state.backendConnected) loadUserData();
 }
 
 async function handleAuthLogout() {
   try {
-    localStorage.removeItem("plantgo_saved_user");
-    currentUser = null;
-    if (fbAuth) {
+    if (fbAuth && fbAuth.currentUser) {
       await fbAuth.signOut();
     }
-    updateAuthUI(null);
+    if (typeof google !== "undefined" && google.accounts && google.accounts.id) {
+      google.accounts.id.disableAutoSelect();
+    }
+    clearSignedInUser();
     initGoogleAuth();
-    showToast("Signed out of PlantGo", "info");
+    showToast("Signed out of PlantGo");
     closeAuthModal();
   } catch (err) {
     console.error("Sign out error:", err);
@@ -2202,11 +2015,13 @@ function updateAuthUI(user) {
     if (profileUnauthCard) profileUnauthCard.style.display = "none";
     if (profileLoggedCard) profileLoggedCard.style.display = "flex";
     if (profileEmailTxt) profileEmailTxt.textContent = user.email || displayName;
+    const authBadge = document.getElementById("profile-auth-badge");
+    if (authBadge) authBadge.textContent = user.provider === "google" ? "✓ Google Connected" : "✓ Signed in with email";
   } else {
     if (label) label.textContent = "Sign In";
     if (icon) icon.textContent = "👤";
     if (headerBtn) headerBtn.classList.remove("logged-in");
-    if (profileNameEl) profileNameEl.textContent = "Explorer_Forest_9";
+    if (profileNameEl) profileNameEl.textContent = "Explorer";
     if (profileAvatar) {
       profileAvatar.style.backgroundImage = "url('assets/avatar_explorer.png')";
     }
@@ -2223,12 +2038,14 @@ window.handleAuthSubmit = handleAuthSubmit;
 window.handleAuthLogout = handleAuthLogout;
 window.initFirebaseAuth = initFirebaseAuth;
 
-// Restore saved user if present
+// Restore saved user only when a backend session exists (older versions stored users without one)
 try {
   const saved = localStorage.getItem("plantgo_saved_user");
-  if (saved) {
+  if (saved && getSessionToken()) {
     currentUser = JSON.parse(saved);
     updateAuthUI(currentUser);
+  } else if (saved) {
+    localStorage.removeItem("plantgo_saved_user");
   }
 } catch (e) {}
 

@@ -38,8 +38,8 @@
             <span id="header-auth-label">Sign In</span>
           </button>
           <div class="user-score-badge">
-          <span class="level-val">14</span>
-          <span class="xp-indicator">2340/5000 XP</span>
+          <span class="level-val">Lv 1</span>
+          <span class="xp-indicator">0 / 1000 XP</span>
           </div>
         </div>
       </div>
@@ -114,9 +114,31 @@
           <div class="camera-controls-top" style="position:relative; z-index:10;">
             <button class="btn-camera-back" id="camera-back-btn" onclick="closeCameraView()">← Back to Map</button>
             <input type="file" id="web-file-input" accept="image/*" capture="environment" style="display:none;" />
-            <span>⚡ Auto</span>
-            <span>AI Core Active</span>
-            <span>⚙</span>
+            <span class="camera-top-title">Identify a Plant</span>
+          </div>
+
+          <!-- Welcome hero shown before a photo is chosen -->
+          <div class="identify-hero">
+            <div class="identify-hero-icon">🌿</div>
+            <h2 class="identify-hero-title">What plant is this?</h2>
+            <p class="identify-hero-sub">Take a photo or choose one from your gallery. Our AI will match it against 30,000+ species.</p>
+            <div class="identify-hero-actions">
+              <button type="button" class="identify-btn identify-btn-camera" onclick="startCameraCapture()">
+                <span class="identify-btn-icon">📸</span>
+                <span class="identify-btn-text"><strong>Take a Photo</strong><small>Use your camera</small></span>
+              </button>
+              <button type="button" class="identify-btn identify-btn-gallery" onclick="checkAndRequestGalleryPermission()">
+                <span class="identify-btn-icon">🖼️</span>
+                <span class="identify-btn-text"><strong>Upload from Gallery</strong><small>Pick an existing photo</small></span>
+              </button>
+            </div>
+            <div class="identify-hero-tips">
+              <span>Best results:</span>
+              <span class="identify-tip">🌸 Flowers</span>
+              <span class="identify-tip">🍃 Leaves</span>
+              <span class="identify-tip">🍒 Fruit</span>
+              <span class="identify-tip">🪵 Bark</span>
+            </div>
           </div>
 
           <!-- BOTTOM SLIDE-UP AI DIAGNOSIS DRAWER -->
@@ -202,14 +224,14 @@
           <div class="profile-card-top">
             <div class="profile-avatar-large" style="background-image: url('assets/avatar_explorer.png')"></div>
             <div class="profile-details-top">
-              <span class="profile-name">Explorer_Forest_9</span>
-              <span class="profile-title-rank">Botanist Rank (Lv. 14)</span>
+              <span class="profile-name">Explorer</span>
+              <span class="profile-title-rank" id="profile-rank">Botanist Rank (Lv. 1)</span>
               
               <div class="profile-points-bar">
                 <div class="profile-bar-bg">
-                  <div class="profile-bar-fill"></div>
+                  <div class="profile-bar-fill" id="profile-xp-fill" style="width: 0%;"></div>
                 </div>
-                <span class="profile-points-txt">XP points to Level 15: <span class="xp-indicator">2340/5000</span></span>
+                <span class="profile-points-txt">XP to Level <span id="profile-next-level">2</span>: <span class="xp-indicator">0 / 1000 XP</span></span>
               </div>
             </div>
           </div>
@@ -225,7 +247,7 @@
             </div>
             <div class="profile-auth-authenticated" id="profile-auth-logged" style="display: none;">
               <div class="profile-auth-info">
-                <span class="profile-auth-badge">✓ Google Connected</span>
+                <span class="profile-auth-badge" id="profile-auth-badge">✓ Google Connected</span>
                 <span class="profile-auth-desc" id="profile-google-email">explorer@gmail.com</span>
               </div>
               <button type="button" class="btn-profile-signout" id="btn-profile-signout" onclick="handleAuthLogout()">Sign Out</button>
@@ -235,41 +257,41 @@
           <!-- Score totals stats grid -->
           <div class="profile-stats-grid">
             <div class="stat-box">
-              <div class="stat-num" id="profile-discovered-count">3</div>
+              <div class="stat-num" id="profile-discovered-count">0</div>
               <div class="stat-label">Discovered</div>
             </div>
             <div class="stat-box">
-              <div class="stat-num" id="profile-verified-count">2</div>
+              <div class="stat-num" id="profile-verified-count">0</div>
               <div class="stat-label">Reviewed</div>
             </div>
             <div class="stat-box">
-              <div class="stat-num">4,280</div>
+              <div class="stat-num" id="profile-total-points">0</div>
               <div class="stat-label">Total Points</div>
             </div>
           </div>
 
           <!-- Badge progression displays -->
           <div>
-            <h3 class="profile-section-title">Unlocked Achievement Badges</h3>
+            <h3 class="profile-section-title">Achievement Badges</h3>
             <div class="badges-case-grid">
               
               <div class="badge-item">
-                <div class="badge-icon-wrap unlocked">🌱</div>
+                <div class="badge-icon-wrap locked" data-unlock-at="1">🌱</div>
                 <span class="badge-item-name">Seedling</span>
               </div>
               
               <div class="badge-item">
-                <div class="badge-icon-wrap unlocked">🧭</div>
+                <div class="badge-icon-wrap locked" data-unlock-at="5">🧭</div>
                 <span class="badge-item-name">Explorer</span>
               </div>
 
               <div class="badge-item">
-                <div class="badge-icon-wrap unlocked badge-green">🌳</div>
+                <div class="badge-icon-wrap locked" data-unlock-at="10">🌳</div>
                 <span class="badge-item-name">Botanist</span>
               </div>
 
               <div class="badge-item">
-                <div class="badge-icon-wrap locked">🛡️</div>
+                <div class="badge-icon-wrap locked" data-unlock-at="25">🛡️</div>
                 <span class="badge-item-name">Tree Guardian</span>
               </div>
 
@@ -282,17 +304,16 @@
             <div class="stat-box" style="text-align: left; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="font-size: 0.9rem; font-weight: 700; color: var(--text-primary);">🏆 10 Plants Identified Milestone</div>
-                <span class="milestone-badge-pill" id="milestone-status-badge">9 / 10</span>
+                <span class="milestone-badge-pill" id="milestone-status-badge">0 / 10</span>
               </div>
               <div style="font-size: 0.78rem; color: var(--text-secondary);">
                 Identify 10 distinct botanical specimens in the field. When completed, your achievement will be shared according to your settings.
               </div>
               <div class="profile-bar-bg" style="height: 8px;">
-                <div class="profile-bar-fill" id="milestone-bar-fill" style="width: 90%;"></div>
+                <div class="profile-bar-fill" id="milestone-bar-fill" style="width: 0%;"></div>
               </div>
               <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 2px;">
-                <span style="font-size: 0.72rem; color: var(--text-secondary);" id="milestone-subtext">1 more discovery to reach milestone!</span>
-                <button class="btn-primary" id="btn-quick-discover" style="padding: 5px 12px; font-size: 0.75rem; border-radius: 8px;">+ Discover 10th Plant</button>
+                <span style="font-size: 0.72rem; color: var(--text-secondary);" id="milestone-subtext">10 more discoveries to reach milestone!</span>
               </div>
             </div>
           </div>
@@ -355,86 +376,47 @@
         <div class="detail-sheet-header">
           <div class="detail-image-grad"></div>
           <div class="detail-sheet-title-box">
-            <h2 class="detail-common-name">Sacred Banyan Tree</h2>
-            <div class="detail-scientific-name">Ficus benghalensis</div>
+            <h2 class="detail-common-name"></h2>
+            <div class="detail-scientific-name"></div>
           </div>
         </div>
 
         <div class="detail-sheet-scroll">
-          
-          <!-- Taxonomy badge tag pills -->
-          <div class="detail-pill-row" id="detail-pill-container">
-            <!-- script insertion -->
-          </div>
 
-          <!-- Edibility & Medicinal properties -->
-          <div class="detail-grid-info">
-            <div class="detail-section-card detail-grid-item">
-              <span class="detail-grid-label">🌿 Edibility</span>
-              <span class="detail-grid-val" id="detail-edible">No</span>
-            </div>
-            <div class="detail-section-card detail-grid-item">
-              <span class="detail-grid-label">🩺 Medicinal</span>
-              <span class="detail-grid-val" id="detail-medicinal">None</span>
-            </div>
-          </div>
+          <!-- Category / family / confidence pills -->
+          <div class="detail-pill-row" id="detail-pill-container"></div>
 
-          <!-- General Description -->
           <div class="detail-section-card">
-            <h4 class="detail-section-title">Species Description</h4>
+            <h4 class="detail-section-title">About this sighting</h4>
             <div class="detail-section-body" id="detail-desc"></div>
           </div>
 
-          <!-- Taxonomy parameters grids -->
           <div class="detail-section-card detail-grid-info">
-            
             <div class="detail-grid-item">
               <span class="detail-grid-label">☀ Sun</span>
-              <span class="detail-grid-val" id="detail-sun">Full</span>
+              <span class="detail-grid-val" id="detail-sun"></span>
             </div>
-            
             <div class="detail-grid-item">
               <span class="detail-grid-label">💧 Water</span>
-              <span class="detail-grid-val" id="detail-water">Moderate</span>
+              <span class="detail-grid-val" id="detail-water"></span>
             </div>
-
             <div class="detail-grid-item">
-              <span class="detail-grid-label">🌍 Native region</span>
-              <span class="detail-grid-val" id="detail-region">Global</span>
+              <span class="detail-grid-label">👤 Spotted by</span>
+              <span class="detail-grid-val" id="detail-spotted-by"></span>
             </div>
-
             <div class="detail-grid-item">
-              <span class="detail-grid-label">🏥 Health Status</span>
-              <span class="detail-grid-val" id="detail-health" style="color: var(--safe-green)">Healthy</span>
+              <span class="detail-grid-label">📍 Distance</span>
+              <span class="detail-grid-val" id="detail-distance"></span>
             </div>
-
-            <div class="detail-grid-item">
-              <span class="detail-grid-label">🌸 Flowering</span>
-              <span class="detail-grid-val" id="detail-flowering">Spring</span>
-            </div>
-
-            <div class="detail-grid-item">
-              <span class="detail-grid-label">🍒 Fruiting</span>
-              <span class="detail-grid-val" id="detail-fruiting">Autumn</span>
-            </div>
-
           </div>
 
-          <!-- Community Consensus Status Bar -->
+          <!-- Community verification -->
           <div class="detail-votes-action">
             <div>
-              <div class="detail-vote-desc">Community Verification Status</div>
-              <div style="font-size: 0.7rem; color: var(--text-secondary);">Consensus verified by local botanists</div>
+              <div class="detail-vote-desc" id="detail-status"></div>
+              <div style="font-size: 0.7rem; color: var(--text-secondary);" id="detail-votes"></div>
             </div>
-            <span class="milestone-badge-pill" style="font-size: 0.8rem; padding: 6px 12px;">Verified ✓</span>
-          </div>
-
-          <!-- User Feedback & Comments -->
-          <div class="detail-section-card">
-            <h4 class="detail-section-title">Community Review Log</h4>
-            <div id="detail-comments" style="display:flex; flex-direction:column; gap:8px;">
-              <!-- dynamically filled comments -->
-            </div>
+            <button class="btn-primary" id="detail-vote-action-btn" style="padding: 8px 14px; font-size: 0.8rem; border-radius: 10px;">✓ Vouch (+50 XP)</button>
           </div>
 
         </div>
@@ -545,7 +527,7 @@
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=2.9"></script>
+  <script src="app.js?v=3.0"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>
