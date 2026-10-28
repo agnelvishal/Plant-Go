@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plant Go</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Leaflet CSS for OpenStreetMap -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNH3n+GiOz5s1PPN61xLK9OADa1lX="
+    crossorigin=""/>
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nE6z3B54w50Y6jT0T9c5kLdFfTj1u9vC6BfXfT3t0="
+    crossorigin=""></script>
+</head>
+<body>
+
+  <!-- APP CONTENT - Cleaned up and ready for production -->
+  <div id="app-wrapper">
+    <!-- Content starts here: simulator-screen wrapper -->
+    <div class="simulator-screen">
+          
+      <!-- OS Status Bar removed for production -->
+
+      <!-- Mock App Header (Keep this) -->
+      <div class="app-header">
+        <div class="app-title-area">
+          <div class="app-logo-badge">☘</div>
+          <div class="app-title-text">Plant Go</div>
+        </div>
+        <div class="user-score-badge">
+          <span class="level-val">14</span>
+          <span class="xp-indicator">2340/5000 XP</span>
+        </div>
+      </div>
+
+      <!-- APP SCREEN PANELS (Switchable) -->
+      
+      <!-- TAB 1: INTERACTIVE MAP -->
+      <div class="app-screen active" id="screen-map">
+        <div class="map-canvas-container">
+          
+          <!-- Map Search bar overlay -->
+          <div class="map-search-bar">
+            <svg style="width: 18px; height: 18px; fill: var(--text-secondary);" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <input type="text" placeholder="Search plant names, families..." disabled>
+          </div>
+
+          <!-- Map Filter categories slider overlay -->
+          <div class="map-filter-scroll">
+            <button class="map-filter-chip active" data-filter="all">All</button>
+            <button class="map-filter-chip" data-filter="trees">Trees</button>
+            <button class="map-filter-chip" data-filter="flowers">Flowers</button>
+            <button class="map-filter-chip" data-filter="medicinal">Medicinal</button>
+            <button class="map-filter-chip" data-filter="rare">Rare & Endangered</button>
+          </div>
+
+          <!-- Vector Map Canvas (Replaced with Leaflet Map) -->
+          <div id="map"></div>
+
+          <!-- Gesture Dashboard Mode Extra Overlays -->
+          <div class="gesture-header-pill" style="display: none;">
+            <span style="color:var(--primary)">★</span> Walk outside to explore nearby
+          </div>
+          <button class="gesture-sheet-trigger" style="display: none;">
+            📋 Review queue (2)
+          </button>
+
+        </div>
+      </div>
+
+      <!-- TAB 2: AI IDENTIFICATION VIEWPORT -->
+      <div class="app-screen" id="screen-ai-identify">
+        <div class="camera-viewfinder">
+          
+          <!-- Camera upper toolbar -->
+          <div class="camera-controls-top">
+            <span>⚡ Auto</span>
+            <span>AI Core Active</span>
+            <span>⚙</span>
+          </div>
+
+          <!-- BOTTOM SLIDE-UP AI DIAGNOSIS DRAWER -->
+          <div class="ai-results-overlay">
+            <div class="ai-results-header">
+              <div>
+                <h3 style="font-size: 1rem; color: var(--text-primary);">AI Identification Matches</h3>
+                <p style="font-size: 0.75rem; color: var(--text-secondary);">Verify the closest match to upload</p>
+              </div>
+              <span class="ai-status-badge">High Confidence</span>
+            </div>
+
+            <div class="ai-result-list" id="ai-results-list">
+              <!-- JS inserts candidates -->
+            </div>
+
+            <div class="confirm-action-row">
+              <button class="btn-secondary" id="ai-cancel-btn">Retake</button>
+              <button class="btn-primary" id="ai-confirm-btn">Confirm & Submit (+250 XP)</button>
+            </div>
+          </div>
+
+          <!-- REAL CAMERA CONTROLS -->
+          <div class="camera-controls-bottom" id="camera-controls-bottom">
+            <!-- JS will insert Use/Retake/Take Photo buttons -->
+          </div>
+
+        </div>
+      </div>
+
+      <!-- TAB 3: PLANT RADAR (Pokemon Go radar style) -->
+      <div class="app-screen" id="screen-radar">
+        <div class="radar-screen-content">
+          
+          <!-- Animated sonar ping -->
+          <div class="radar-ping-area">
+            <div class="radar-sweeper">
+              <div class="radar-center-dot"></div>
+              <!-- targets placement -->
+              <div class="radar-target-dot" style="top: 35%; left: 30%;"></div>
+              <div class="radar-target-dot" style="top: 60%; left: 75%;"></div>
+            </div>
+            <div style="position: absolute; bottom: 12px; font-size: 0.75rem; color: #81c784; font-weight: 500;">
+              Scanning coordinates for nearby flora...
+            </div>
+          </div>
+
+          <!-- Nearby Plants details queue -->
+          <div class="radar-info-panel">
+            <h3 class="radar-list-title">Plants awaiting verification nearby</h3>
+            <div class="radar-list">
+              <!-- JS inserts nearby plant cards -->
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- TAB 4: COMMUNITY VERIFICATION QUEUE -->
+      <div class="app-screen" id="screen-verification">
+        <div class="app-header" style="border-bottom: none; padding: 0.5rem 1.25rem;">
+          <h3 style="font-size: 0.95rem; font-weight: 700; color: var(--text-primary);">Citizen Science Verification Feed</h3>
+        </div>
+        
+        <div class="verification-scroll">
+          <!-- JS dynamic verification item cards -->
+        </div>
+      </div>
+
+      <!-- TAB 5: EXPLORER PROFILE -->
+      <div class="app-screen" id="screen-profile">
+        <div class="profile-scroll">
+          
+          <!-- Top user badge -->
+          <div class="profile-card-top">
+            <div class="profile-avatar-large" style="background-image: url('assets/avatar_explorer.png')"></div>
+            <div class="profile-details-top">
+              <span class="profile-name">Explorer_Forest_9</span>
+              <span class="profile-title-rank">Botanist Rank (Lv. 14)</span>
+              
+              <div class="profile-points-bar">
+                <div class="profile-bar-bg">
+                  <div class="profile-bar-fill"></div>
+                </div>
+                <span class="profile-points-txt">XP points to Level 15: <span class="xp-indicator">2340/5000</span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Score totals stats grid -->
+          <div class="profile-stats-grid">
+            <div class="stat-box">
+              <div class="stat-num" id="profile-discovered-count">3</div>
+              <div class="stat-label">Discovered</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-num" id="profile-verified-count">2</div>
+              <div class="stat-label">Reviewed</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-num">4,280</div>
+              <div class="stat-label">Total Points</div>
+            </div>
+          </div>
+
+          <!-- Badge progression displays -->
+          <div>
+            <h3 class="profile-section-title">Unlocked Achievement Badges</h3>
+            <div class="badges-case-grid">
+              
+              <div class="badge-item">
+                <div class="badge-icon-wrap unlocked">🌱</div>
+                <span class="badge-item-name">Seedling</span>
+              </div>
+              
+              <div class="badge-item">
+                <div class="badge-icon-wrap unlocked">🧭</div>
+                <span class="badge-item-name">Explorer</span>
+              </div>
+
+              <div class="badge-item">
+                <div class="badge-icon-wrap unlocked badge-green">🌳</div>
+                <span class="badge-item-name">Botanist</span>
+              </div>
+
+              <div class="badge-item">
+                <div class="badge-icon-wrap locked">🛡️</div>
+                <span class="badge-item-name">Tree Guardian</span>
+              </div>
+
+            </div>
+          </div>
+
+          <div>
+            <h3 class="profile-section-title">Weekly Challenges</h3>
+            <div class="stat-box" style="text-align: left; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="font-size: 0.85rem; font-weight: 700;">☘ Medicinals Mission</div>
+              <div style="font-size: 0.75rem; color: var(--text-secondary);">Verify 5 medicinal plants in your town. Reward: <b>Eco Ranger Badge</b> & <b>500 XP</b>.</div>
+              <div class="profile-bar-bg">
+                <div class="profile-bar-fill"></div>
+              </div>
+              <div style="font-size: 0.65rem; color: var(--text-secondary)">Progress: 3 / 5 plants identified</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- GLOBAL COMPONENT: SPECIMEN DETAILS SHEET (PULL-UP DRAWER) -->
+      <div class="detail-bottom-sheet">
+        <button class="detail-sheet-close">×</button>
+        
+        <div class="detail-sheet-header">
+          <div class="detail-image-grad"></div>
+          <div class="detail-sheet-title-box">
+            <h2 class="detail-common-name">Sacred Banyan Tree</h2>
+            <div class="detail-scientific-name">Ficus benghalensis</div>
+          </div>
+        </div>
+
+        <div class="detail-sheet-scroll">
+          
+          <!-- Taxonomy badge tag pills -->
+          <div class="detail-pill-row" id="detail-pill-container">
+            <!-- script insertion -->
+          </div>
+
+          <!-- Edibility & Medicinal properties -->
+          <div class="detail-grid-info">
+            <div class="detail-section-card detail-grid-item">
+              <span class="detail-grid-label">🌿 Edibility</span>
+              <span class="detail-grid-val" id="detail-edible">No</span>
+            </div>
+            <div class="detail-section-card detail-grid-item">
+              <span class="detail-grid-label">🩺 Medicinal</span>
+              <span class="detail-grid-val" id="detail-medicinal">None</span>
+            </div>
+          </div>
+
+          <!-- General Description -->
+          <div class="detail-section-card">
+            <h4 class="detail-section-title">Species Description</h4>
+            <div class="detail-section-body" id="detail-desc"></div>
+          </div>
+
+          <!-- Taxonomy parameters grids -->
+          <div class="detail-section-card detail-grid-info">
+            
+            <div class="detail-grid-item">
+              <span class="detail-grid-label">☀ Sun</span>
+              <span class="detail-grid-val" id="detail-sun">Full</span>
+            </div>
+            
+            <div class="detail-grid-item">
+              <span class="detail-grid-label">💧 Water</span>
+              <span class="detail-grid-val" id="detail-water">Moderate</span>
+            </div>
+
+            <div class="detail-grid-item">
+              <span class="detail-grid-label">🌍 Native region</span>
+              <span class="detail-grid-val" id="detail-region">Global</span>
+            </div>
+
+            <div class="detail-grid-item">
+              <span class="detail-grid-label">🏥 Health Status</span>
+              <span class="detail-grid-val" id="detail-health" style="color: var(--safe-green)">Healthy</span>
+            </div>
+
+            <div class="detail-grid-item">
+              <span class="detail-grid-label">🌸 Flowering</span>
+              <span class="detail-grid-val" id="detail-flowering">Spring</span>
+            </div>
+
+            <div class="detail-grid-item">
+              <span class="detail-grid-label">🍒 Fruiting</span>
+              <span class="detail-grid-val" id="detail-fruiting">Autumn</span>
+            </div>
+
+          </div>
+
+          <!-- Votes voucher action line -->
+          <div class="detail-votes-action">
+            <div>
+              <div class="detail-vote-desc">Vouch for this identification?</div>
+              <div style="font-size: 0.65rem; color: var(--text-secondary);">Help this specimen reach verified status</div>
+            </div>
+            <button class="detail-vote-btn-sheet" id="detail-vote-action-btn">Agree ID (+50 XP)</button>
+          </div>
+
+          <!-- User Feedback & Comments -->
+          <div class="detail-section-card">
+            <h4 class="detail-section-title">Community Review Log</h4>
+            <div id="detail-comments" style="display:flex; flex-direction:column; gap:8px;">
+              <!-- dynamically filled comments -->
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Bottom Navigation Bar -->
+      <nav class="phone-nav-bar">
+        
+        <a href="#" class="nav-item active" data-tab="map">
+          <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          <span>Map</span>
+        </a>
+        
+        <a href="#" class="nav-item" data-tab="radar">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/></svg>
+          <span>Radar</span>
+        </a>
+        
+        <a href="#" class="nav-item nav-item-camera" data-tab="ai-identify">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+          <span>AI Identify</span>
+        </a>
+        
+        <a href="#" class="nav-item" data-tab="verification">
+          <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          <span>Verify</span>
+        </a>
+        
+        <a href="#" class="nav-item" data-tab="profile">
+          <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          <span>Profile</span>
+        </a>
+
+      </nav>
+
+      <!-- Radial Menu Layout components (Not used, but kept for JS handling) -->
+      <div class="phone-radial-menu-wrapper">
+        <button class="radial-trigger-btn" id="radialTrigger">
+          <span class="radial-trigger-icon">☘</span>
+        </button>
+        <div class="radial-menu-items">
+          <a href="#" class="radial-item" data-tab="map" style="--i:0;" title="Map">
+            <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          </a>
+          <a href="#" class="radial-item" data-tab="radar" style="--i:1;" title="Radar">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/></svg>
+          </a>
+          <a href="#" class="radial-item radial-item-camera" data-tab="ai-identify" style="--i:2;" title="Scan">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
+          </a>
+          <a href="#" class="radial-item" data-tab="verification" style="--i:3;" title="Verify">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          </a>
+          <a href="#" class="radial-item" data-tab="profile" style="--i:4;" title="Profile">
+            <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          </a>
+        </div>
+      </div>
+
+      <!-- Home indicator bar -->
+      <div class="phone-home-indicator"></div>
+
+    </div>
+  </div>
+
+  <!-- Load script logic -->
+  <script src="app.js"></script>
+</body>
+</html>
