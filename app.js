@@ -8,7 +8,88 @@ const Geolocation = CapacitorPlugins.Geolocation || null;
 const Permissions = CapacitorPlugins.Permissions || null;
 
 // --- STATE MANAGEMENT ---
+// --- MARIADB BACKEND API CONFIGURATION ---
+const API_BASE = (function() {
+  if (typeof window !== "undefined" && window.location) {
+    const host = window.location.hostname || "localhost";
+    return "http://" + host + ":5001/api";
+  }
+  return "http://localhost:5001/api";
+})();
+
+async function syncFromBackend() {
+  try {
+    const healthRes = await fetch(API_BASE + "/health", { signal: AbortSignal.timeout(2500) });
+    if (!healthRes.ok) throw new Error("Health check failed");
+    state.backendConnected = true;
+    updateBackendStatusUI(true, "MariaDB Active (Port 5001)");
+
+    const [profileRes, feedsRes, radarRes, settingsRes] = await Promise.all([
+      fetch(API_BASE + "/profile").then(r => r.ok ? r.json() : null),
+      fetch(API_BASE + "/feeds").then(r => r.ok ? r.json() : null),
+      fetch(API_BASE + "/radar").then(r => r.ok ? r.json() : null),
+      fetch(API_BASE + "/settings").then(r => r.ok ? r.json() : null)
+    ]);
+
+    if (profileRes) {
+      state.userStats = {
+        discoveredCount: profileRes.discoveredCount,
+        reviewedCount: profileRes.reviewedCount,
+        totalPoints: profileRes.totalPoints,
+        level: profileRes.level,
+        xp: profileRes.xp,
+        xpToNext: profileRes.xpToNext,
+        milestoneAchieved: profileRes.milestoneAchieved
+      };
+      updateProfileUI();
+    }
+
+    if (feedsRes && Array.isArray(feedsRes)) {
+      state.feeds = feedsRes;
+      renderFeeds();
+    }
+
+    if (radarRes && Array.isArray(radarRes)) {
+      state.radarPlants = radarRes;
+      renderRadarList();
+      if (state.mapInitialized) {
+        renderMapPlantMarkers();
+      }
+    }
+
+    if (settingsRes) {
+      state.settings.publishAchievementsToFeed = settingsRes.publishAchievementsToFeed;
+      state.settings.highAccuracyGps = settingsRes.highAccuracyGps;
+      const pubEl = document.getElementById("setting-publish-achievements");
+      if (pubEl) pubEl.checked = state.settings.publishAchievementsToFeed;
+      const gpsEl = document.getElementById("setting-high-gps");
+      if (gpsEl) gpsEl.checked = state.settings.highAccuracyGps;
+    }
+
+    console.log("🌿 MariaDB PlantGo data synced successfully!");
+  } catch (err) {
+    state.backendConnected = false;
+    updateBackendStatusUI(false, "Local Offline Mode (Backend offline)");
+    console.warn("Backend unavailable, using local mock data:", err.message);
+  }
+}
+
+function updateBackendStatusUI(connected, text) {
+  const badge = document.getElementById("backend-status-badge");
+  const desc = document.getElementById("backend-status-desc");
+  if (badge) {
+    badge.textContent = connected ? "Connected 🟢" : "Offline 🟡";
+    badge.style.background = connected ? "rgba(76, 175, 80, 0.15)" : "rgba(255, 152, 0, 0.15)";
+    badge.style.color = connected ? "#2e7d32" : "#e65100";
+  }
+  if (desc) {
+    desc.textContent = text;
+  }
+}
+
+// --- STATE MANAGEMENT ---
 const state = {
+  backendConnected: false,
   activeTab: 'map',
   layout: 'glass-dock',
   theme: 'light-mint',
@@ -560,40 +641,80 @@ function displayIdentificationResult(result) {
 }
 
 // Handling when an identified plant is submitted
-function handlePlantSubmission(result) {
-  // 1. Increment stats
+async function handlePlantSubmission(result) {
+  // If backend is connected, persist to MariaDB
+  if (state.backendConnected) {
+    try {
+      const resp = await fetch(API_BASE + "/feeds/sighting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          commonName: result.commonName,
+          scientificName: result.scientificName,
+          confidence: result.confidence,
+          family: result.family,
+          description: result.description,
+          image: result.image,
+          category: result.category || "flowers"
+        })
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        state.userStats.discoveredCount = data.userStats.discoveredCount;
+        state.userStats.xp = data.userStats.xp;
+        state.userStats.totalPoints = data.userStats.totalPoints;
+        state.userStats.milestoneAchieved = data.userStats.milestoneAchieved;
+        updateProfileUI();
+
+        state.feeds.unshift(data.sighting);
+        if (data.achievement) {
+          state.feeds.unshift(data.achievement);
+        }
+        renderFeeds();
+
+        if (data.milestoneTriggered) {
+          showToast("🏆 Milestone Reached: 10 Plants Identified! Saved to MariaDB & published to Feed.", 4500);
+        } else {
+          showToast("☘ Plant logged to MariaDB! +250 XP earned. Total discovered: " + state.userStats.discoveredCount);
+        }
+        changeTab("feeds");
+        return;
+      }
+    } catch (err) {
+      console.warn("Failed to persist sighting to MariaDB, falling back to local:", err);
+    }
+  }
+
+  // Local fallback
   state.userStats.discoveredCount += 1;
   state.userStats.xp += 250;
   state.userStats.totalPoints += 250;
-  
   updateProfileUI();
 
-  // 2. Add community sighting entry
   const newSighting = {
-    id: 'sighting-' + Date.now(),
-    type: 'sighting',
-    user: 'Explorer_Forest_9 (You)',
-    avatar: 'assets/avatar_explorer.png',
-    badgeText: 'New Discovery',
-    title: result.commonName + ' (' + result.scientificName + ')',
-    subtitle: 'Identified nearby • Just now',
+    id: "sighting-" + Date.now(),
+    type: "sighting",
+    user: "Explorer_Forest_9 (You)",
+    avatar: "assets/avatar_explorer.png",
+    badgeText: "New Discovery",
+    title: result.commonName + " (" + result.scientificName + ")",
+    subtitle: "Identified nearby • Just now",
     image: result.image,
     family: result.family,
     votes: 1,
     verified: false,
-    status: 'Awaiting Community Consensus'
+    status: "Awaiting Community Consensus"
   };
   state.feeds.unshift(newSighting);
 
-  // 3. Milestone Check: 10 Plants Identified!
   if (state.userStats.discoveredCount === 10) {
     triggerMilestoneAchievement(10);
   } else {
-    showToast('☘ Plant logged! +250 XP earned. Total discovered: ' + state.userStats.discoveredCount);
+    showToast("☘ Plant logged! +250 XP earned. Total discovered: " + state.userStats.discoveredCount);
   }
 
-  // Switch to Feeds so user sees their new activity
-  changeTab('feeds');
+  changeTab("feeds");
 }
 
 // Milestone Achievement Trigger
@@ -692,13 +813,30 @@ function renderFeeds() {
   }).join('');
 }
 
-window.toggleCheer = function(feedId) {
+window.toggleCheer = async function(feedId) {
   const item = state.feeds.find(f => f.id === feedId);
   if (!item) return;
+
+  if (state.backendConnected) {
+    try {
+      const resp = await fetch(API_BASE + "/feeds/" + feedId + "/cheer", { method: "POST" });
+      if (resp.ok) {
+        const data = await resp.json();
+        item.cheers = data.cheers;
+        item.cheered = data.cheered;
+        renderFeeds();
+        if (item.cheered) showToast("👏 Cheered on this achievement (Saved to MariaDB)!");
+        return;
+      }
+    } catch (err) {
+      console.warn("Cheer API error, using local fallback:", err);
+    }
+  }
+
   if (!item.cheered) {
     item.cheers += 1;
     item.cheered = true;
-    showToast('👏 Cheered on this achievement!');
+    showToast("👏 Cheered on this achievement!");
   } else {
     item.cheers -= 1;
     item.cheered = false;
@@ -706,15 +844,35 @@ window.toggleCheer = function(feedId) {
   renderFeeds();
 };
 
-window.vouchSighting = function(feedId) {
+window.vouchSighting = async function(feedId) {
   const item = state.feeds.find(f => f.id === feedId);
   if (!item) return;
+
+  if (state.backendConnected) {
+    try {
+      const resp = await fetch(API_BASE + "/feeds/" + feedId + "/vote", { method: "POST" });
+      if (resp.ok) {
+        const data = await resp.json();
+        item.votes = data.feed.votes;
+        state.userStats.reviewedCount = data.userStats.reviewedCount;
+        state.userStats.xp = data.userStats.xp;
+        state.userStats.totalPoints = data.userStats.totalPoints;
+        updateProfileUI();
+        renderFeeds();
+        showToast("✓ Vouched identification in MariaDB! +50 XP awarded.");
+        return;
+      }
+    } catch (err) {
+      console.warn("Vouch API error, using local fallback:", err);
+    }
+  }
+
   item.votes += 1;
   state.userStats.reviewedCount += 1;
   state.userStats.xp += 50;
   state.userStats.totalPoints += 50;
   updateProfileUI();
-  showToast('✓ Vouched identification! +50 XP awarded.');
+  showToast("✓ Vouched identification! +50 XP awarded.");
   renderFeeds();
 };
 
@@ -873,15 +1031,29 @@ function initApp() {
   });
 
   // Settings: Publish Achievements to Feed Toggle
-  const publishToggle = document.getElementById('setting-publish-achievements');
+  const publishToggle = document.getElementById("setting-publish-achievements");
   if (publishToggle) {
     publishToggle.checked = state.settings.publishAchievementsToFeed;
-    publishToggle.addEventListener('change', (e) => {
+    publishToggle.addEventListener("change", async (e) => {
       state.settings.publishAchievementsToFeed = e.target.checked;
-      localStorage.setItem('plantgo_publish_feed', e.target.checked ? 'true' : 'false');
+      localStorage.setItem("plantgo_publish_feed", e.target.checked ? "true" : "false");
+      if (state.backendConnected) {
+        try {
+          await fetch(API_BASE + "/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              publishAchievementsToFeed: state.settings.publishAchievementsToFeed,
+              highAccuracyGps: state.settings.highAccuracyGps
+            })
+          });
+        } catch (err) {
+          console.warn("Settings sync to MariaDB failed:", err);
+        }
+      }
       showToast(e.target.checked 
-        ? 'Settings: Achievements will be published to the Community Feed' 
-        : 'Settings: Achievements will NOT be published to the Feed (Private)');
+        ? "Settings: Achievements will be published to the Community Feed" 
+        : "Settings: Achievements will NOT be published to the Feed (Private)");
     });
   }
 
@@ -915,6 +1087,9 @@ function initApp() {
   // Initial tab setup
   changeTab('map');
   updateProfileUI();
+
+  // Sync data with MariaDB backend
+  syncFromBackend();
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
