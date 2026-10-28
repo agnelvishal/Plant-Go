@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Plant Go</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=3.3">
+  <link rel="stylesheet" href="style.css?v=3.4">
   <!-- Capacitor native bridge (served automatically on Android) -->
   <script src="capacitor.js"></script>
   <!-- Leaflet CSS for OpenStreetMap (Bundled Locally - No SRI or CDN blocks) -->
@@ -347,7 +347,7 @@
               <div class="setting-row">
                 <div class="setting-info">
                   <div class="setting-title">High Accuracy GPS</div>
-                  <div class="setting-desc">Enable high precision geolocation tracking for plant radar</div>
+                  <div class="setting-desc">Enable high precision geolocation for the plant map</div>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="setting-high-gps" checked>
@@ -374,6 +374,22 @@
                   </select>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Blocked users (signed-in only) -->
+          <div id="profile-blocked-section" style="display: none; margin-bottom: 1.5rem;">
+            <h3 class="profile-section-title">Blocked Users</h3>
+            <div class="settings-card" id="profile-blocked-list"></div>
+          </div>
+
+          <!-- About & legal -->
+          <div style="margin-bottom: 2rem;">
+            <h3 class="profile-section-title">About</h3>
+            <div class="settings-card">
+              <a class="about-link-row" href="https://plantgo.gptindia.pro/community-guidelines" target="_blank" rel="noopener">Community Guidelines<span>›</span></a>
+              <div class="setting-divider"></div>
+              <a class="about-link-row" href="https://plantgo.gptindia.pro/privacy" target="_blank" rel="noopener">Privacy Policy<span>›</span></a>
             </div>
           </div>
 
@@ -430,6 +446,8 @@
             <button class="btn-primary" id="detail-vote-action-btn" style="padding: 8px 14px; font-size: 0.8rem; border-radius: 10px;">✓ Vouch (+50 XP)</button>
           </div>
 
+          <button type="button" class="detail-report-btn" id="detail-report-btn">⚑ Report or block</button>
+
         </div>
       </div>
 
@@ -440,10 +458,12 @@
           <span>Map</span>
         </a>
         
+        <!-- Radar tab hidden for now; uncomment to bring it back (screen-radar and its JS are still in place)
         <a href="#" class="nav-item" data-tab="radar">
           <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/></svg>
           <span>Radar</span>
         </a>
+        -->
         
         <a href="#" class="nav-item" data-tab="feeds">
           <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
@@ -465,9 +485,11 @@
           <a href="#" class="radial-item" data-tab="map" style="--i:0;" title="Map">
             <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
           </a>
+          <!-- Radar hidden for now
           <a href="#" class="radial-item" data-tab="radar" style="--i:1;" title="Radar">
             <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/></svg>
           </a>
+          -->
           <a href="#" class="radial-item radial-item-camera" data-tab="ai-identify" style="--i:2;" title="Scan">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
           </a>
@@ -559,13 +581,55 @@
     </div>
   </div>
 
+  <!-- Report / Block Modal -->
+  <div class="auth-modal-overlay" id="post-actions-overlay" onclick="if(event.target === this) closePostActions()">
+    <div class="auth-card">
+      <button type="button" class="auth-modal-close" onclick="closePostActions()" aria-label="Close dialog">&times;</button>
+      <div class="auth-header-visual">
+        <h2>Report this post</h2>
+        <p>Why are you reporting it?</p>
+      </div>
+      <div class="post-actions-list">
+        <button type="button" class="post-action-btn" onclick="reportPost('offensive')">🚫 Offensive or inappropriate</button>
+        <button type="button" class="post-action-btn" onclick="reportPost('privacy')">👤 Shows people or private info</button>
+        <button type="button" class="post-action-btn" onclick="reportPost('spam')">📢 Spam</button>
+        <button type="button" class="post-action-btn" onclick="reportPost('not_a_plant')">🌵 Not a plant</button>
+        <button type="button" class="post-action-btn" onclick="reportPost('other')">❔ Something else</button>
+        <div class="setting-divider"></div>
+        <button type="button" class="post-action-btn post-action-danger" id="post-action-block" onclick="blockPostAuthor()">⛔ Block user</button>
+      </div>
+      <p class="post-actions-note">Reported posts are reviewed under our <a href="https://plantgo.gptindia.pro/community-guidelines" target="_blank" rel="noopener">Community Guidelines</a>. Blocking hides all of this user's posts from you.</p>
+    </div>
+  </div>
+
+  <!-- Community Guidelines agreement (shown before a user's first post) -->
+  <div class="auth-modal-overlay" id="guidelines-overlay">
+    <div class="auth-card">
+      <div class="auth-header-visual">
+        <h2>Community Guidelines</h2>
+        <p>Your sighting will be visible to everyone</p>
+      </div>
+      <ul class="guidelines-summary">
+        <li>Post photos of plants only</li>
+        <li>No nudity, violence, hate or harassment</li>
+        <li>No photos of people or private info without consent</li>
+        <li>No spam or advertising</li>
+      </ul>
+      <p class="post-actions-note">Posts that break the <a href="https://plantgo.gptindia.pro/community-guidelines" target="_blank" rel="noopener">Community Guidelines</a> are removed, and repeat offenders may be banned.</p>
+      <div class="edit-profile-actions">
+        <button type="button" class="auth-btn-secondary" onclick="resolveGuidelines(false)">Cancel</button>
+        <button type="button" class="auth-btn-primary" onclick="resolveGuidelines(true)">I agree</button>
+      </div>
+    </div>
+  </div>
+
         <div class="phone-home-indicator"></div>
 
     </div>
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=3.4"></script>
+  <script src="app.js?v=3.5"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>

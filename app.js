@@ -105,6 +105,8 @@ async function loadUserData() {
     renderMapPlantMarkers();
   }
 
+  loadBlockedUsers();
+
   if (settingsRes) {
     state.settings.publishAchievementsToFeed = settingsRes.publishAchievementsToFeed;
     state.settings.highAccuracyGps = settingsRes.highAccuracyGps;
@@ -1218,6 +1220,10 @@ async function handlePlantSubmission(result) {
     renderCameraControls("preview");
     return;
   }
+  if (!(await confirmCommunityGuidelines())) {
+    renderCameraControls("preview");
+    return;
+  }
 
   showToast("Saving your discovery...");
   try {
@@ -1304,7 +1310,7 @@ function renderFeeds() {
               <div class="feed-achievement-avatar" style="background-image: url('${escapeHtml(resolveImageUrl(item.avatar))}')"></div>
               <span>${userLabel}</span>
             </div>
-            <span>${escapeHtml(item.badgeText)}</span>
+            <span class="feed-header-right">${escapeHtml(item.badgeText)}${postMenuButton(item)}</span>
           </div>
           <div class="feed-achievement-body">
             <div class="feed-achievement-badge-icon">${escapeHtml(item.icon || '🏆')}</div>
@@ -1325,6 +1331,7 @@ function renderFeeds() {
       <div class="verification-card" data-id="${escapeHtml(item.id)}">
         <div class="verification-header">
           <span>${escapeHtml(item.badgeText)} • ${userLabel}</span>
+          ${postMenuButton(item)}
         </div>
         ${image
           ? `<div class="verification-image" style="background-image: url('${escapeHtml(image)}')"></div>`
@@ -1343,6 +1350,133 @@ function renderFeeds() {
     `;
   }).join('');
 }
+
+function postMenuButton(item) {
+  if (item.isUser) return '';
+  return `<button type="button" class="post-menu-btn" onclick="openPostActions('${escapeHtml(item.id)}')" aria-label="Report or block">⋯</button>`;
+}
+
+// --- REPORT & BLOCK (user-generated content moderation) ---
+
+function findPost(feedId) {
+  return state.feeds.find(f => f.id === feedId) || state.radarPlants.find(f => f.id === feedId);
+}
+
+// Drops posts from the local lists and redraws every view that shows them
+function removePostsLocally(predicate) {
+  state.feeds = state.feeds.filter(f => !predicate(f));
+  state.radarPlants = state.radarPlants.filter(f => !predicate(f));
+  renderFeeds();
+  renderRadarList();
+  renderMapPlantMarkers();
+}
+
+window.openPostActions = async function(feedId) {
+  const post = findPost(feedId);
+  if (!post) return;
+  if (!(await ensureSession())) {
+    showToast("Sign in to report or block", "error");
+    openAuthModal();
+    return;
+  }
+  state.actionPostId = feedId;
+  const blockBtn = document.getElementById("post-action-block");
+  if (blockBtn) {
+    blockBtn.textContent = "⛔ Block " + (post.user || "this user");
+    blockBtn.style.display = post.authorId ? "" : "none";
+  }
+  document.getElementById("post-actions-overlay").classList.add("active");
+};
+
+window.closePostActions = function() {
+  document.getElementById("post-actions-overlay").classList.remove("active");
+};
+
+window.reportPost = async function(reason) {
+  const feedId = state.actionPostId;
+  closePostActions();
+  if (!feedId) return;
+  try {
+    const resp = await apiFetch("/feeds/" + encodeURIComponent(feedId) + "/report", {
+      method: "POST",
+      body: JSON.stringify({ reason })
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error((data && data.error) || "Server error " + resp.status);
+    removePostsLocally(f => f.id === feedId);
+    closeSpecimenDetails();
+    showToast("Thanks, we'll review this post. It's now hidden for you.");
+  } catch (err) {
+    showToast("Could not report: " + err.message, "error");
+  }
+};
+
+window.blockPostAuthor = async function() {
+  const post = findPost(state.actionPostId);
+  closePostActions();
+  if (!post || !post.authorId) return;
+  if (!window.confirm("Block " + (post.user || "this user") + "?\n\nYou won't see their posts anymore. You can unblock them from your Profile.")) return;
+  try {
+    const resp = await apiFetch("/users/" + encodeURIComponent(post.authorId) + "/block", { method: "POST" });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) throw new Error((data && data.error) || "Server error " + resp.status);
+    removePostsLocally(f => f.authorId === post.authorId);
+    closeSpecimenDetails();
+    loadBlockedUsers();
+    showToast("⛔ " + escapeHtml(post.user || "User") + " is blocked");
+  } catch (err) {
+    showToast("Could not block: " + err.message, "error");
+  }
+};
+
+async function loadBlockedUsers() {
+  const section = document.getElementById("profile-blocked-section");
+  const list = document.getElementById("profile-blocked-list");
+  if (!section || !list) return;
+  if (!getSessionToken()) {
+    section.style.display = "none";
+    return;
+  }
+  const users = await apiFetch("/blocks").then(r => r.ok ? r.json() : null).catch(() => null);
+  if (!Array.isArray(users) || users.length === 0) {
+    section.style.display = "none";
+    return;
+  }
+  section.style.display = "";
+  list.innerHTML = users.map((u, i) => `
+    ${i > 0 ? '<div class="setting-divider"></div>' : ''}
+    <div class="blocked-user-row">
+      <div class="blocked-user-avatar" style="background-image: url('${escapeHtml(resolveImageUrl(u.avatar))}')"></div>
+      <span class="blocked-user-name">${escapeHtml(u.username)}</span>
+      <button type="button" class="btn-secondary blocked-user-unblock" onclick="unblockUser('${escapeHtml(u.id)}')">Unblock</button>
+    </div>`).join('');
+}
+
+window.unblockUser = async function(userId) {
+  try {
+    const resp = await apiFetch("/users/" + encodeURIComponent(userId) + "/block", { method: "DELETE" });
+    if (!resp.ok) throw new Error("Server error " + resp.status);
+    showToast("User unblocked");
+    loadUserData();
+  } catch (err) {
+    showToast("Could not unblock: " + err.message, "error");
+  }
+};
+
+// Asks once for agreement to the Community Guidelines before the first post
+let guidelinesResolver = null;
+function confirmCommunityGuidelines() {
+  if (localStorage.getItem("plantgo_guidelines_accepted") === "1") return Promise.resolve(true);
+  document.getElementById("guidelines-overlay").classList.add("active");
+  return new Promise(resolve => { guidelinesResolver = resolve; });
+}
+
+window.resolveGuidelines = function(accepted) {
+  document.getElementById("guidelines-overlay").classList.remove("active");
+  if (accepted) localStorage.setItem("plantgo_guidelines_accepted", "1");
+  if (guidelinesResolver) guidelinesResolver(accepted);
+  guidelinesResolver = null;
+};
 
 function timeAgo(dateValue) {
   const then = new Date(dateValue).getTime();
@@ -1495,6 +1629,8 @@ function openSpecimenDetails(plant) {
 
   const voteBtn = document.getElementById('detail-vote-action-btn');
   if (voteBtn) voteBtn.style.display = plant.isUser ? 'none' : '';
+  const reportBtn = document.getElementById('detail-report-btn');
+  if (reportBtn) reportBtn.style.display = plant.isUser ? 'none' : '';
 
   sheet.classList.add('active');
 }
@@ -1602,6 +1738,13 @@ function initApp() {
       await syncFromBackend();
       reconnectDbBtn.textContent = "Sync DB";
       showToast(state.backendConnected ? "✓ Connected to MariaDB!" : "✕ Could not reach MariaDB server");
+    };
+  }
+
+  const sheetReportBtn = document.getElementById('detail-report-btn');
+  if (sheetReportBtn) {
+    sheetReportBtn.onclick = () => {
+      if (state.selectedPlantId) openPostActions(state.selectedPlantId);
     };
   }
 

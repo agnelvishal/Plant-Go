@@ -2715,3 +2715,140 @@ button.profile-avatar-large:disabled {
   opacity: 0.6;
   cursor: default;
 }
+
+/* --- Report / block (user-generated content moderation) --- */
+.verification-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.feed-header-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.post-menu-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  margin: -4px -6px -4px 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.post-menu-btn:active {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.post-actions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.post-action-btn {
+  text-align: left;
+  background: var(--bg-main, #f5f5f5);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 11px 14px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.post-action-danger {
+  color: #d32f2f;
+}
+
+.post-actions-note {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  margin-top: 12px;
+  line-height: 1.5;
+}
+
+.post-actions-note a {
+  color: var(--primary);
+}
+
+.guidelines-summary {
+  margin: 0 0 4px 1.1rem;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.8;
+}
+
+.detail-report-btn {
+  display: block;
+  margin: -0.75rem auto 1.5rem;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 0.78rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.blocked-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.blocked-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #e8f5e9 center/cover no-repeat;
+  flex-shrink: 0;
+}
+
+.blocked-user-name {
+  flex: 1;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.blocked-user-unblock {
+  padding: 6px 12px;
+  font-size: 0.75rem;
+  border-radius: 8px;
+}
+
+.about-link-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.about-link-row span {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+}
+
+#guidelines-overlay .edit-profile-actions {
+  margin-top: 16px;
+}
