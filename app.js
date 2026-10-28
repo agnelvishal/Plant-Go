@@ -2,8 +2,9 @@
 // Safe extraction from Capacitor if available in native runtime
 const CapacitorPlugins = (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins : {};
 const Camera = CapacitorPlugins.Camera || null;
-const CameraResultType = (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.CameraResultType) ? window.Capacitor.CameraResultType : { Uri: 'uri' };
-const CameraSource = (typeof window !== 'undefined' && window.Capacitor && window.Capacitor.CameraSource) ? window.Capacitor.CameraSource : { Camera: 'CAMERA', Photos: 'PHOTOS' };
+// Enum values from @capacitor/camera (not exposed on window.Capacitor without a bundler)
+const CameraResultType = { Uri: 'uri', Base64: 'base64', DataUrl: 'dataUrl' };
+const CameraSource = { Prompt: 'PROMPT', Camera: 'CAMERA', Photos: 'PHOTOS' };
 const Geolocation = CapacitorPlugins.Geolocation || null;
 const Permissions = CapacitorPlugins.Permissions || null;
 
@@ -349,6 +350,8 @@ function changeTab(tabName) {
 function showToast(message, duration = 3200) {
   const toast = document.getElementById('app-toast');
   if (!toast) return;
+  // Callers sometimes pass a type ("success"/"error") instead of a duration
+  if (typeof duration !== 'number') duration = duration === 'error' ? 5000 : 3200;
   toast.innerHTML = message;
   toast.classList.add('show');
   
@@ -1133,6 +1136,9 @@ async function requestAndLaunchNativeCamera(source = "camera") {
       resultType: CameraResultType.DataUrl,
       source: source === "photos" ? CameraSource.Photos : CameraSource.Camera,
       quality: 85,
+      width: 1600,
+      height: 1600,
+      correctOrientation: true,
       allowEditing: false,
       saveToGallery: false
     });
@@ -1151,10 +1157,10 @@ async function requestAndLaunchNativeCamera(source = "camera") {
     }
   } catch (err) {
     console.warn("Native camera operation cancelled or error:", err);
-    if (err && err.message && (err.message.includes("cancelled") || err.message.includes("User cancelled"))) {
-      renderCameraControls("initial");
-    } else {
-      triggerWebFileInput();
+    renderCameraControls("initial");
+    const msg = (err && err.message) || "";
+    if (!/cancel/i.test(msg)) {
+      showToast("Camera error: " + (msg || "unable to capture photo"), "error");
     }
   }
 }
@@ -1202,6 +1208,8 @@ async function runIdentification(photoPath, organ = "auto") {
   
   try {
     let identificationResult = null;
+    let identifyError = null;
+    const isSamplePhoto = !photoPath || photoPath.startsWith("assets/");
 
     if (state.backendConnected) {
       const resp = await fetch(API_BASE + "/identify", {
@@ -1233,8 +1241,22 @@ async function runIdentification(photoPath, organ = "auto") {
             verified: true,
             image: photoPath || "assets/plant_rose.png"
           };
+        } else {
+          identifyError = data.message || "No botanical match found.";
         }
+      } else {
+        const errData = await resp.json().catch(() => null);
+        identifyError = (errData && errData.error) || ("Server error " + resp.status);
       }
+    } else {
+      identifyError = "Offline: cannot reach the identification server.";
+    }
+
+    // Real photos must not get a fake result; show the error and let the user retry
+    if (!identificationResult && !isSamplePhoto) {
+      showToast("Identification failed: " + identifyError, "error");
+      renderCameraControls("preview");
+      return;
     }
 
     if (!identificationResult) {
@@ -1262,6 +1284,11 @@ async function runIdentification(photoPath, organ = "auto") {
     displayIdentificationResult(identificationResult);
   } catch (err) {
     console.error("Pl@ntNet identification error:", err);
+    if (photoPath && !photoPath.startsWith("assets/")) {
+      showToast("Identification failed: " + (err.message || "network error"), "error");
+      renderCameraControls("preview");
+      return;
+    }
     displayIdentificationResult({
       commonName: "Field Specimen",
       scientificName: "Flora taxonomy",
