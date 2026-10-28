@@ -840,11 +840,6 @@ function stopLiveVideoStream() {
 async function startCameraCapture() {
   stopLiveVideoStream();
 
-  const viewfinder = document.querySelector(".camera-viewfinder");
-  if (viewfinder) {
-    viewfinder.style.backgroundImage = "none";
-    viewfinder.style.backgroundColor = "#111";
-  }
 
   // 1. If running natively in Android via Capacitor, trigger native Camera directly
   if (isCapacitorNative() && Camera) {
@@ -889,7 +884,6 @@ async function startCameraCapture() {
 function captureLiveVideoFrame() {
   const videoEl = document.getElementById("camera-live-video");
   const canvasEl = document.getElementById("camera-snapshot-canvas");
-  const viewfinder = document.querySelector(".camera-viewfinder");
   if (!videoEl || !canvasEl) return;
 
   canvasEl.width = videoEl.videoWidth || 640;
@@ -902,11 +896,7 @@ function captureLiveVideoFrame() {
 
   stopLiveVideoStream();
 
-  if (viewfinder) {
-    viewfinder.style.backgroundImage = "url(" + dataUrl + ")";
-    viewfinder.style.backgroundSize = "cover";
-    viewfinder.style.backgroundPosition = "center";
-  }
+  setPreviewPhoto(dataUrl);
 
   renderCameraControls("preview");
   showToast("Photo captured! Choose organ to identify 🌿", "success");
@@ -914,7 +904,6 @@ function captureLiveVideoFrame() {
 
 function triggerWebFileInput() {
   const fileInput = document.getElementById("web-file-input");
-  const viewfinder = document.querySelector(".camera-viewfinder");
   if (fileInput) {
     fileInput.value = "";
     fileInput.onchange = (e) => {
@@ -924,11 +913,7 @@ function triggerWebFileInput() {
       reader.onload = (event) => {
         state.photoData = event.target.result;
         stopLiveVideoStream();
-        if (viewfinder) {
-          viewfinder.style.backgroundImage = "url(" + state.photoData + ")";
-          viewfinder.style.backgroundSize = "cover";
-          viewfinder.style.backgroundPosition = "center";
-        }
+        setPreviewPhoto(state.photoData);
         renderCameraControls("preview");
       };
       reader.readAsDataURL(file);
@@ -937,6 +922,17 @@ function triggerWebFileInput() {
   } else {
     showToast("Photo picker is not available on this device", "error");
   }
+}
+
+// Shows the chosen photo as a card on the identify screen (null clears it)
+function setPreviewPhoto(src) {
+  const viewfinder = document.querySelector(".camera-viewfinder");
+  const img = document.getElementById("identify-photo");
+  if (img) {
+    if (src) img.src = src;
+    else img.removeAttribute("src");
+  }
+  if (viewfinder) viewfinder.classList.toggle("has-photo", Boolean(src));
 }
 
 function renderCameraControls(mode) {
@@ -964,10 +960,7 @@ function renderCameraControls(mode) {
     if (galleryBtn) galleryBtn.onclick = triggerWebFileInput;
 
   } else if (mode === "initial") {
-    if (viewfinder) {
-      viewfinder.style.backgroundImage = "";
-      viewfinder.style.backgroundColor = "";
-    }
+    setPreviewPhoto(null);
 
   } else if (mode === "preview") {
     state.selectedOrgan = state.selectedOrgan || "auto";
@@ -1052,12 +1045,7 @@ async function requestAndLaunchNativeCamera(source = "camera") {
     if (photo && photo.dataUrl) {
       state.photoData = photo.dataUrl;
       stopLiveVideoStream();
-      const viewfinder = document.querySelector(".camera-viewfinder");
-      if (viewfinder) {
-        viewfinder.style.backgroundImage = "url(" + photo.dataUrl + ")";
-        viewfinder.style.backgroundSize = "cover";
-        viewfinder.style.backgroundPosition = "center";
-      }
+      setPreviewPhoto(photo.dataUrl);
       renderCameraControls("preview");
       showToast("Specimen photo captured! Select organ to identify 🌿", "success");
     }

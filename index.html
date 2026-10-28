@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Plant Go</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=3.1">
   <!-- Capacitor native bridge (served automatically on Android) -->
   <script src="capacitor.js"></script>
   <!-- Leaflet CSS for OpenStreetMap (Bundled Locally - No SRI or CDN blocks) -->
@@ -139,6 +139,11 @@
               <span class="identify-tip">🍒 Fruit</span>
               <span class="identify-tip">🪵 Bark</span>
             </div>
+          </div>
+
+          <!-- Chosen photo, shown as a card above the controls -->
+          <div class="identify-photo-wrap">
+            <img id="identify-photo" alt="Selected plant photo" />
           </div>
 
           <!-- BOTTOM SLIDE-UP AI DIAGNOSIS DRAWER -->
@@ -527,7 +532,7 @@
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=3.0"></script>
+  <script src="app.js?v=3.1"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>
