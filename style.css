@@ -748,7 +748,8 @@ body {
 
 .verification-image {
   width: 100%;
-  height: 180px;
+  aspect-ratio: 4 / 3;
+  max-height: 480px;
   background-size: cover;
   background-position: center;
 }
@@ -1127,6 +1128,17 @@ button.profile-avatar-large:disabled {
   gap: 8px;
   flex-wrap: wrap;
   margin: 0.6rem 0;
+}
+
+.plant-links-title {
+  margin: 0.9rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.plant-links-title + .plant-links {
+  margin-top: 0.4rem;
 }
 
 #detail-links .plant-links {
@@ -2776,4 +2788,16 @@ button,
 
 #guidelines-overlay .edit-profile-actions {
   margin-top: 16px;
+}
+
+/* Recenter button icon: blue dot with a light blue glow, like Google Maps */
+.fab-location-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: auto;
+  background: #1a73e8;
+  border: 2.5px solid #ffffff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 5px rgba(26, 115, 232, 0.25), 0 0 8px 4px rgba(66, 133, 244, 0.35);
 }

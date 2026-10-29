@@ -121,14 +121,9 @@ async function loadUserData() {
 
   // Guests keep the settings stored on this device
   if (settingsRes && getSessionToken()) {
-    const gpsChanged = state.settings.highAccuracyGps !== settingsRes.highAccuracyGps;
     state.settings.publishAchievementsToFeed = settingsRes.publishAchievementsToFeed;
-    state.settings.highAccuracyGps = settingsRes.highAccuracyGps;
-    if (gpsChanged) restartLocationWatch();
     const pubEl = document.getElementById("setting-publish-achievements");
     if (pubEl) pubEl.checked = state.settings.publishAchievementsToFeed;
-    const gpsEl = document.getElementById("setting-high-gps");
-    if (gpsEl) gpsEl.checked = state.settings.highAccuracyGps;
   }
 }
 
@@ -262,8 +257,7 @@ const state = {
   locationWatcher: null,
   mapMarkers: [],
   settings: {
-    publishAchievementsToFeed: localStorage.getItem('plantgo_publish_feed') !== 'false', // Default true
-    highAccuracyGps: localStorage.getItem('plantgo_high_gps') !== 'false' // Default true
+    publishAchievementsToFeed: localStorage.getItem('plantgo_publish_feed') !== 'false' // Default true
   },
   userStats: {
     discoveredCount: 0,
@@ -326,15 +320,14 @@ function changeTab(tabName) {
   }
 }
 
-// Saves both settings for a signed-in user; guests keep them on this device only
+// Saves the settings for a signed-in user; guests keep them on this device only
 async function saveSettings() {
   if (!getSessionToken()) return true;
   try {
     const resp = await apiFetch("/settings", {
       method: "PUT",
       body: JSON.stringify({
-        publishAchievementsToFeed: state.settings.publishAchievementsToFeed,
-        highAccuracyGps: state.settings.highAccuracyGps
+        publishAchievementsToFeed: state.settings.publishAchievementsToFeed
       })
     });
     if (!resp.ok) throw new Error("Server error " + resp.status);
@@ -484,7 +477,7 @@ function addMapControls() {
   // Recenter GPS Button
   const recenterBtn = document.createElement('button');
   recenterBtn.type = 'button';
-  recenterBtn.innerHTML = '📍';
+  recenterBtn.innerHTML = '<span class="fab-location-dot"></span>';
   recenterBtn.className = 'map-fab-btn';
   recenterBtn.title = 'Recenter on My Location';
   recenterBtn.style.bottom = '110px';
@@ -800,7 +793,7 @@ function startLocationWatch() {
     try {
       nativeGeo.watchPosition(
         {
-          enableHighAccuracy: state.settings.highAccuracyGps,
+          enableHighAccuracy: true,
           timeout: 15000,
           maximumAge: 5000
         },
@@ -835,7 +828,7 @@ function startLocationWatch() {
           console.warn('Web location watch error:', err);
         },
         {
-          enableHighAccuracy: state.settings.highAccuracyGps,
+          enableHighAccuracy: true,
           timeout: 15000,
           maximumAge: 5000
         }
@@ -1235,7 +1228,8 @@ function plantLinksHtml(commonName, scientificName) {
   const googleQuery = common && sci && common.toLowerCase() !== sci.toLowerCase() ? common + ' ' + sci : wikiQuery;
   const link = (href, label) =>
     '<a class="plant-link" href="' + href + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
-  return '<div class="plant-links">' +
+  return '<h4 class="plant-links-title">External Links</h4>' +
+    '<div class="plant-links">' +
     link('https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent(wikiQuery), '📖 Wikipedia') +
     link('https://www.google.com/search?q=' + encodeURIComponent(googleQuery), '🔎 Google') +
     '</div>';
@@ -1861,24 +1855,6 @@ function initApp() {
       showToast(checked
         ? "Settings: Achievements will be published to the Community Feed"
         : "Settings: Achievements will NOT be published to the Feed (Private)");
-    });
-  }
-
-  // Settings: High GPS Toggle
-  const gpsToggle = document.getElementById('setting-high-gps');
-  if (gpsToggle) {
-    gpsToggle.checked = state.settings.highAccuracyGps;
-    gpsToggle.addEventListener('change', async (e) => {
-      const checked = e.target.checked;
-      state.settings.highAccuracyGps = checked;
-      if (!(await saveSettings())) {
-        state.settings.highAccuracyGps = !checked;
-        gpsToggle.checked = !checked;
-        return;
-      }
-      localStorage.setItem('plantgo_high_gps', checked ? 'true' : 'false');
-      restartLocationWatch();
-      showToast(checked ? 'High accuracy GPS enabled' : 'Battery saver GPS mode active');
     });
   }
 
