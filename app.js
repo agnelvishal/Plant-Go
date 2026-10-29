@@ -1990,8 +1990,8 @@ async function handleAuthSubmit(e) {
   return false;
 }
 
+// Web Google Sign-In and Android Web Client ID from REDACTED (Project: REDACTED)
 const GOOGLE_CLIENT_ID = "REDACTED.apps.googleusercontent.com";
-// Native Android sign-in must use the web client from the same project as the Android OAuth clients (google-services.json)
 const GOOGLE_ANDROID_WEB_CLIENT_ID = "REDACTED.apps.googleusercontent.com";
 
 // Inside the Android app, Google's web button can't work (it navigates the WebView away),
