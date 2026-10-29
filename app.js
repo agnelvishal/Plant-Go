@@ -1484,27 +1484,6 @@ function timeAgo(dateValue) {
   return days < 30 ? days + 'd ago' : new Date(then).toLocaleDateString();
 }
 
-window.toggleCheer = async function(feedId) {
-  const item = state.feeds.find(f => f.id === feedId);
-  if (!item) return;
-  if (!(await ensureSession())) {
-    showToast("Sign in to cheer achievements", "error");
-    openAuthModal();
-    return;
-  }
-  try {
-    const resp = await apiFetch("/feeds/" + encodeURIComponent(feedId) + "/cheer", { method: "POST" });
-    const data = await resp.json().catch(() => null);
-    if (!resp.ok) throw new Error((data && data.error) || "Server error " + resp.status);
-    item.cheers = data.cheers;
-    item.cheered = data.cheered;
-    renderFeeds();
-    showToast("👏 Cheered on this achievement!");
-  } catch (err) {
-    showToast("Could not cheer: " + err.message, "error");
-  }
-};
-
 window.vouchSighting = async function(feedId) {
   if (!(await ensureSession())) {
     showToast("Sign in to vouch for sightings", "error");
@@ -2463,6 +2442,5 @@ try {
   }
 } catch (e) {}
 
-// Initialize Firebase and Google Identity Services immediately
-initFirebaseAuth();
+// Google Identity Services starts immediately; Firebase auth is initialised by initApp
 initGoogleAuth();
