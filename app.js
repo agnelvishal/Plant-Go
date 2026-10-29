@@ -1163,14 +1163,6 @@ function displayIdentificationResult(result) {
       '</div>';
   }
 
-  let quotaBadgeHtml = "";
-  if (result.remainingRequests !== undefined) {
-    quotaBadgeHtml =
-      '<div style="margin-top: 8px; font-size: 0.72rem; color: #81c784; font-weight:500;">' +
-      '✨ Pl@ntNet API Quota: ' + result.remainingRequests + ' requests remaining' +
-      '</div>';
-  }
-
   const detailsHtml =
     '<div class="result-details" style="padding: 0.6rem 0; font-size: 0.82rem; color: var(--text-secondary);">' +
     '<p style="margin-bottom:4px;"><b>Family:</b> ' + escapeHtml(result.family) + (result.detectedOrgan ? ' • <b>Organ:</b> ' + escapeHtml(result.detectedOrgan) : '') + '</p>' +
@@ -1179,7 +1171,6 @@ function displayIdentificationResult(result) {
     '<p style="margin-bottom:4px;"><b>Care:</b> ' + escapeHtml(result.care) + '</p>' +
     '<p><b>Notes:</b> ' + escapeHtml(result.description) + '</p>' +
     candidatesHtml +
-    quotaBadgeHtml +
     '</div>';
 
   document.getElementById("ai-results-list").innerHTML = detailsHtml;
