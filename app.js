@@ -120,13 +120,10 @@ async function loadUserData() {
 async function syncFromBackend() {
   updateBackendStatusUI(false, "Connecting to MariaDB backend...", true);
 
-  const savedPreference = DEV_ENDPOINTS_ENABLED ? (localStorage.getItem("plantgo_selected_api_base") || "auto") : "auto";
   let candidateEndpoints = [];
 
   if (!DEV_ENDPOINTS_ENABLED) {
     candidateEndpoints = [CLOUD_API_BASE];
-  } else if (savedPreference && savedPreference !== "auto") {
-    candidateEndpoints = [savedPreference];
   } else {
     // In Android runtime (Capacitor), prioritize Cloud then Android emulator / LAN / loopback
     candidateEndpoints = [
@@ -161,10 +158,7 @@ async function syncFromBackend() {
 
   if (!activeEndpoint) {
     state.backendConnected = false;
-    const failureMsg = savedPreference !== "auto" 
-      ? `Could not reach ${savedPreference}`
-      : "Could not reach Cloud or Local MariaDB server";
-    updateBackendStatusUI(false, "Offline mode (" + failureMsg + ")");
+    updateBackendStatusUI(false, "Offline mode (Could not reach Cloud or Local MariaDB server)");
     console.warn("Backend unavailable, using local mock data. Last error:", lastError?.message);
     return;
   }
@@ -1593,6 +1587,7 @@ function openSpecimenDetails(plant) {
   const sheet = document.querySelector('.detail-bottom-sheet');
   if (!sheet) return;
   state.selectedPlantId = plant.id;
+  if (state.map) state.map.closePopup();
 
   sheet.querySelector('.detail-common-name').textContent = plant.commonName || plant.title;
   sheet.querySelector('.detail-scientific-name').textContent = plant.scientific || '';
@@ -1713,32 +1708,6 @@ function initApp() {
   const sheetClose = document.querySelector('.detail-sheet-close');
   if (sheetClose) {
     sheetClose.onclick = closeSpecimenDetails;
-  }
-
-  // MariaDB Manual Reconnect Button & Endpoint Selector
-  const backendSelect = document.getElementById("setting-backend-select");
-  if (backendSelect && !DEV_ENDPOINTS_ENABLED) {
-    backendSelect.parentElement.style.display = "none";
-  } else if (backendSelect) {
-    const saved = localStorage.getItem("plantgo_selected_api_base") || "auto";
-    backendSelect.value = saved;
-    backendSelect.addEventListener("change", async (e) => {
-      const selected = e.target.value;
-      localStorage.setItem("plantgo_selected_api_base", selected);
-      showToast("Connecting to: " + (selected === "auto" ? "Auto-Detect" : selected) + "...");
-      await syncFromBackend();
-      showToast(state.backendConnected ? "✓ Connected to MariaDB!" : "✕ Connection failed");
-    });
-  }
-
-  const reconnectDbBtn = document.getElementById("btn-reconnect-db");
-  if (reconnectDbBtn) {
-    reconnectDbBtn.onclick = async () => {
-      reconnectDbBtn.textContent = "Syncing...";
-      await syncFromBackend();
-      reconnectDbBtn.textContent = "Sync DB";
-      showToast(state.backendConnected ? "✓ Connected to MariaDB!" : "✕ Could not reach MariaDB server");
-    };
   }
 
   const sheetReportBtn = document.getElementById('detail-report-btn');
