@@ -2234,7 +2234,7 @@ function updateAuthUI(user) {
     const authBadge = document.getElementById("profile-auth-badge");
     if (authBadge) authBadge.textContent = user.provider === "google" ? "✓ Google Connected" : "✓ Signed in with email";
   } else {
-    if (label) label.textContent = "Sign In";
+    if (label) label.textContent = "Sign In/Sign Up";
     if (icon) icon.textContent = "👤";
     if (headerBtn) headerBtn.classList.remove("logged-in");
     if (profileNameEl) profileNameEl.textContent = "Explorer";
