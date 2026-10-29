@@ -6,6 +6,21 @@
   <title>Plant Go</title>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css?v=3.4">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-Z1XWJPL78C"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-Z1XWJPL78C', {
+      app_name: 'PlantGo App',
+      client_platform: (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) ? 'android_app' : 'web_app',
+      send_page_view: true
+    });
+  </script>
+
   <!-- Capacitor native bridge (served automatically on Android) -->
   <script src="capacitor.js"></script>
   <!-- Leaflet CSS for OpenStreetMap (Bundled Locally - No SRI or CDN blocks) -->
