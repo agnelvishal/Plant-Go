@@ -459,21 +459,6 @@ function addMapControls() {
   };
   mapContainer.appendChild(recenterBtn);
 
-  // Heatmap Toggle Button
-  const heatmapBtn = document.createElement('button');
-  heatmapBtn.type = 'button';
-  heatmapBtn.innerHTML = '🔥';
-  heatmapBtn.className = 'map-fab-btn';
-  heatmapBtn.title = 'Botanical Density Heatmap';
-  heatmapBtn.style.bottom = '165px';
-  heatmapBtn.style.left = '14px';
-  heatmapBtn.onclick = () => {
-    heatmapBtn.classList.toggle('active');
-    const isActive = heatmapBtn.classList.contains('active');
-    showToast(isActive ? '🔥 Botanical density heatmap enabled' : 'Botanical density heatmap hidden');
-  };
-  mapContainer.appendChild(heatmapBtn);
-
   // Hook up the Map Capture Plant Button
   const captureBtn = document.getElementById('map-capture-btn');
   if (captureBtn) {
