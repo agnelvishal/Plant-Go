@@ -1794,11 +1794,13 @@ window.state = state;
 
 // --- FIREBASE AUTHENTICATION INITIALIZATION & HANDLERS ---
 const firebaseConfig = {
+  projectId: "REDACTED",
+  appId: "REDACTED",
+  storageBucket: "REDACTED",
   apiKey: "REDACTED",
   authDomain: "REDACTED",
-  projectId: "REDACTED",
-  storageBucket: "REDACTED",
-  appId: "REDACTED"
+  messagingSenderId: "REDACTED",
+  measurementId: "REDACTED"
 };
 
 let fbAuth = null;
