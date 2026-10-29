@@ -2026,7 +2026,10 @@ function initGoogleAuth() {
       client_id: GOOGLE_CLIENT_ID,
       callback: handleGoogleCredentialResponse,
       auto_select: false,
-      cancel_on_tap_outside: true
+      cancel_on_tap_outside: true,
+      // Use the browser's own sign-in sheet where supported; the popup tab fallback
+      // can get stuck on mobile and never hand the credential back to this page
+      use_fedcm_for_button: true
     });
 
     // Render button inside Auth Modal
