@@ -40,7 +40,7 @@ function setSessionToken(token) {
   try {
     if (token) localStorage.setItem("plantgo_session", token);
     else localStorage.removeItem("plantgo_session");
-  } catch (e) {}
+  } catch (e) { }
 }
 
 // Backend request with the signed-in user's session attached
@@ -219,7 +219,7 @@ const state = {
   feedFilter: 'all',
   selectedPlantId: null,
   photoData: null,
-    selectedOrgan: "auto",
+  selectedOrgan: "auto",
   map: null,
   userMarker: null,
   accuracyCircle: null,
@@ -252,7 +252,7 @@ function changeTab(tabName) {
   document.querySelectorAll(".app-screen").forEach(screen => {
     screen.classList.remove("active");
   });
-  
+
   const targetScreen = document.getElementById('screen-' + tabName);
   if (targetScreen) {
     targetScreen.classList.add("active");
@@ -298,7 +298,7 @@ function showToast(message, duration = 3200) {
   if (typeof duration !== 'number') duration = duration === 'error' ? 5000 : 3200;
   toast.innerHTML = message;
   toast.classList.add('show');
-  
+
   if (toast._timer) clearTimeout(toast._timer);
   toast._timer = setTimeout(() => {
     toast.classList.remove('show');
@@ -311,19 +311,19 @@ function showPermissionDeniedDialog(permissionName, onGrant, onGallery) {
   const existingDialog = document.getElementById('permission-dialog');
   if (existingDialog) existingDialog.remove();
 
-  const dialogHtml = 
+  const dialogHtml =
     '<div id="permission-dialog" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); display:flex; justify-content:center; align-items:center; z-index:9999;">' +
-      '<div style="background:white; padding:22px; border-radius:14px; text-align:center; max-width: 320px; color: black; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">' +
-        '<h4 style="margin-bottom: 8px; font-size: 1.05rem;">' + permissionName + ' Access Needed</h4>' +
-        '<p style="margin-bottom: 18px; font-size: 0.85rem; color: #555;">' + permissionName + ' permission is required to discover and scan flora specimens.</p>' +
-        '<button id="btn-grant-again" class="btn-primary" style="width:100%; margin-bottom: 8px; padding: 10px;">Grant Permission</button>' +
-        (onGallery ? '<button id="btn-gallery-alt" class="btn-secondary" style="width:100%; margin-bottom: 8px; padding: 8px;">Choose From Gallery</button>' : '') +
-        '<button id="btn-dialog-close" class="btn-secondary" style="width:100%; padding: 8px;">Cancel</button>' +
-      '</div>' +
+    '<div style="background:white; padding:22px; border-radius:14px; text-align:center; max-width: 320px; color: black; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">' +
+    '<h4 style="margin-bottom: 8px; font-size: 1.05rem;">' + permissionName + ' Access Needed</h4>' +
+    '<p style="margin-bottom: 18px; font-size: 0.85rem; color: #555;">' + permissionName + ' permission is required to discover and scan flora specimens.</p>' +
+    '<button id="btn-grant-again" class="btn-primary" style="width:100%; margin-bottom: 8px; padding: 10px;">Grant Permission</button>' +
+    (onGallery ? '<button id="btn-gallery-alt" class="btn-secondary" style="width:100%; margin-bottom: 8px; padding: 8px;">Choose From Gallery</button>' : '') +
+    '<button id="btn-dialog-close" class="btn-secondary" style="width:100%; padding: 8px;">Cancel</button>' +
+    '</div>' +
     '</div>';
 
   document.body.insertAdjacentHTML('beforeend', dialogHtml);
-  
+
   document.getElementById('btn-grant-again').onclick = () => {
     document.getElementById('permission-dialog').remove();
     onGrant();
@@ -349,7 +349,7 @@ function getCapacitorGeolocation() {
     if (typeof window.Capacitor.registerPlugin === 'function') {
       try {
         return window.Capacitor.registerPlugin('Geolocation');
-      } catch (e) {}
+      } catch (e) { }
     }
   }
   return null;
@@ -377,16 +377,16 @@ function initMap(retryCount = 0) {
 
   try {
     // 1. Initialize Leaflet Map with OpenStreetMap raster tiles
-    const initialCenter = state.currentLocation 
-      ? [state.currentLocation.lat, state.currentLocation.lng] 
+    const initialCenter = state.currentLocation
+      ? [state.currentLocation.lat, state.currentLocation.lng]
       : [12.9716, 77.5946];
     const initialZoom = state.currentLocation ? 16 : 13;
 
-    state.map = L.map('map', { 
+    state.map = L.map('map', {
       zoomControl: false,
       attributionControl: true
     }).setView(initialCenter, initialZoom);
-    
+
     // Standard Free OpenStreetMap Tile Layer
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -395,6 +395,7 @@ function initMap(retryCount = 0) {
 
     if (state.map.attributionControl) {
       state.map.attributionControl.setPosition('bottomright');
+      state.map.attributionControl.setPrefix(false);
     }
 
     // Attach controls & UI
@@ -423,7 +424,7 @@ function initMap(retryCount = 0) {
 function addMapControls() {
   const mapContainer = document.querySelector('.map-canvas-container');
   if (!mapContainer) return;
-  
+
   // Recenter GPS Button
   const recenterBtn = document.createElement('button');
   recenterBtn.type = 'button';
@@ -442,7 +443,7 @@ function addMapControls() {
     }
   };
   mapContainer.appendChild(recenterBtn);
-  
+
   // Heatmap Toggle Button
   const heatmapBtn = document.createElement('button');
   heatmapBtn.type = 'button';
@@ -504,7 +505,7 @@ function renderMapPlantMarkers() {
     });
 
     const marker = L.marker([plant.lat, plant.lng], { icon: customIcon }).addTo(state.map);
-    
+
     // Bind interactive specimen popup
     marker.bindPopup(`
       <div style="font-family: inherit; font-size: 13px; min-width: 140px; padding: 6px 4px; text-align: center;">
@@ -720,7 +721,7 @@ async function checkAndRequestLocationPermission(userInitiated = false) {
             updateGpsStatusBadge('denied', msg);
             showLocationPermissionBanner();
             if (userInitiated && err.code === 1) {
-              showToast('📍 Location blocked. Please allow location in your browser site settings.');
+              showToast('📍 Location blocked. Please allow location in your device settings.');
             }
           },
           {
@@ -829,7 +830,7 @@ function stopLiveVideoStream() {
   if (liveMediaStream) {
     try {
       liveMediaStream.getTracks().forEach(track => track.stop());
-    } catch (e) {}
+    } catch (e) { }
     liveMediaStream = null;
   }
   const videoEl = document.getElementById("camera-live-video");
@@ -1138,10 +1139,10 @@ async function runIdentification(photoPath, organ = "auto") {
 function displayIdentificationResult(result) {
   const overlay = document.querySelector(".ai-results-overlay");
   if (!overlay) return;
-  
+
   overlay.querySelector("h3").textContent = "Identified: " + result.commonName;
   overlay.querySelector("p").textContent = result.scientificName + " • " + result.confidence + " Match";
-  
+
   const statusBadge = overlay.querySelector(".ai-status-badge");
   if (statusBadge) {
     statusBadge.textContent = (result.confidenceScore && result.confidenceScore > 0.4) ? "🌿 Pl@ntNet Match" : "Botanical Candidate";
@@ -1149,50 +1150,50 @@ function displayIdentificationResult(result) {
 
   let candidatesHtml = "";
   if (result.candidates && result.candidates.length > 1) {
-    candidatesHtml = 
+    candidatesHtml =
       '<div style="margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;">' +
-        '<span style="font-size: 0.72rem; color: var(--primary); font-weight: 600; text-transform: uppercase;">Other Candidates:</span>' +
-        '<div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;">' +
-          result.candidates.slice(1, 3).map(c => 
-            '<span style="font-size: 0.7rem; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 6px; color: var(--text-secondary);">' +
-              escapeHtml((c.commonNames?.[0] || c.scientificName) + ' (' + c.score + ')') +
-            '</span>'
-          ).join('') +
-        '</div>' +
+      '<span style="font-size: 0.72rem; color: var(--primary); font-weight: 600; text-transform: uppercase;">Other Candidates:</span>' +
+      '<div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:5px;">' +
+      result.candidates.slice(1, 3).map(c =>
+        '<span style="font-size: 0.7rem; background: rgba(255,255,255,0.08); padding: 2px 8px; border-radius: 6px; color: var(--text-secondary);">' +
+        escapeHtml((c.commonNames?.[0] || c.scientificName) + ' (' + c.score + ')') +
+        '</span>'
+      ).join('') +
+      '</div>' +
       '</div>';
   }
 
   let quotaBadgeHtml = "";
   if (result.remainingRequests !== undefined) {
-    quotaBadgeHtml = 
+    quotaBadgeHtml =
       '<div style="margin-top: 8px; font-size: 0.72rem; color: #81c784; font-weight:500;">' +
-        '✨ Pl@ntNet API Quota: ' + result.remainingRequests + ' requests remaining' +
+      '✨ Pl@ntNet API Quota: ' + result.remainingRequests + ' requests remaining' +
       '</div>';
   }
 
-  const detailsHtml = 
+  const detailsHtml =
     '<div class="result-details" style="padding: 0.6rem 0; font-size: 0.82rem; color: var(--text-secondary);">' +
-      '<p style="margin-bottom:4px;"><b>Family:</b> ' + escapeHtml(result.family) + (result.detectedOrgan ? ' • <b>Organ:</b> ' + escapeHtml(result.detectedOrgan) : '') + '</p>' +
-      (result.sun ? '<p style="margin-bottom:4px;"><b>Sunlight:</b> ' + escapeHtml(result.sun) + '</p>' : '') +
-      (result.water ? '<p style="margin-bottom:4px;"><b>Water:</b> ' + escapeHtml(result.water) + '</p>' : '') +
-      '<p style="margin-bottom:4px;"><b>Care:</b> ' + escapeHtml(result.care) + '</p>' +
-      '<p><b>Notes:</b> ' + escapeHtml(result.description) + '</p>' +
-      candidatesHtml +
-      quotaBadgeHtml +
+    '<p style="margin-bottom:4px;"><b>Family:</b> ' + escapeHtml(result.family) + (result.detectedOrgan ? ' • <b>Organ:</b> ' + escapeHtml(result.detectedOrgan) : '') + '</p>' +
+    (result.sun ? '<p style="margin-bottom:4px;"><b>Sunlight:</b> ' + escapeHtml(result.sun) + '</p>' : '') +
+    (result.water ? '<p style="margin-bottom:4px;"><b>Water:</b> ' + escapeHtml(result.water) + '</p>' : '') +
+    '<p style="margin-bottom:4px;"><b>Care:</b> ' + escapeHtml(result.care) + '</p>' +
+    '<p><b>Notes:</b> ' + escapeHtml(result.description) + '</p>' +
+    candidatesHtml +
+    quotaBadgeHtml +
     '</div>';
-  
+
   document.getElementById("ai-results-list").innerHTML = detailsHtml;
 
   const confirmRow = overlay.querySelector(".confirm-action-row");
-  confirmRow.innerHTML = 
+  confirmRow.innerHTML =
     '<button class="btn-secondary" id="ai-cancel-btn">Retake</button>' +
     '<button class="btn-primary" id="ai-confirm-btn">Confirm & Submit (+250 XP)</button>';
-  
+
   document.getElementById("ai-cancel-btn").onclick = () => {
     overlay.classList.remove("active");
     renderCameraControls("initial");
   };
-  
+
   document.getElementById("ai-confirm-btn").onclick = () => {
     overlay.classList.remove("active");
     handlePlantSubmission(result);
@@ -1328,8 +1329,8 @@ function renderFeeds() {
           ${postMenuButton(item)}
         </div>
         ${image
-          ? `<div class="verification-image" style="background-image: url('${escapeHtml(image)}')"></div>`
-          : `<div class="verification-image verification-image-empty">🌿</div>`}
+        ? `<div class="verification-image" style="background-image: url('${escapeHtml(image)}')"></div>`
+        : `<div class="verification-image verification-image-empty">🌿</div>`}
         <div class="verification-content">
           <div class="verification-title">${escapeHtml(item.title)}</div>
           <div class="verification-meta">${escapeHtml((item.subtitle ? item.subtitle + ' • ' : '') + when)}</div>
@@ -1365,7 +1366,7 @@ function removePostsLocally(predicate) {
   renderMapPlantMarkers();
 }
 
-window.openPostActions = async function(feedId) {
+window.openPostActions = async function (feedId) {
   const post = findPost(feedId);
   if (!post) return;
   if (!(await ensureSession())) {
@@ -1382,11 +1383,11 @@ window.openPostActions = async function(feedId) {
   document.getElementById("post-actions-overlay").classList.add("active");
 };
 
-window.closePostActions = function() {
+window.closePostActions = function () {
   document.getElementById("post-actions-overlay").classList.remove("active");
 };
 
-window.reportPost = async function(reason) {
+window.reportPost = async function (reason) {
   const feedId = state.actionPostId;
   closePostActions();
   if (!feedId) return;
@@ -1405,7 +1406,7 @@ window.reportPost = async function(reason) {
   }
 };
 
-window.blockPostAuthor = async function() {
+window.blockPostAuthor = async function () {
   const post = findPost(state.actionPostId);
   closePostActions();
   if (!post || !post.authorId) return;
@@ -1446,7 +1447,7 @@ async function loadBlockedUsers() {
     </div>`).join('');
 }
 
-window.unblockUser = async function(userId) {
+window.unblockUser = async function (userId) {
   try {
     const resp = await apiFetch("/users/" + encodeURIComponent(userId) + "/block", { method: "DELETE" });
     if (!resp.ok) throw new Error("Server error " + resp.status);
@@ -1465,7 +1466,7 @@ function confirmCommunityGuidelines() {
   return new Promise(resolve => { guidelinesResolver = resolve; });
 }
 
-window.resolveGuidelines = function(accepted) {
+window.resolveGuidelines = function (accepted) {
   document.getElementById("guidelines-overlay").classList.remove("active");
   if (accepted) localStorage.setItem("plantgo_guidelines_accepted", "1");
   if (guidelinesResolver) guidelinesResolver(accepted);
@@ -1484,7 +1485,7 @@ function timeAgo(dateValue) {
   return days < 30 ? days + 'd ago' : new Date(then).toLocaleDateString();
 }
 
-window.vouchSighting = async function(feedId) {
+window.vouchSighting = async function (feedId) {
   if (!(await ensureSession())) {
     showToast("Sign in to vouch for sightings", "error");
     openAuthModal();
@@ -1557,7 +1558,7 @@ function renderRadarList() {
 
 // --- SPECIMEN DETAILS DRAWER ---
 
-window.openSpecimenDetailsById = function(plantId) {
+window.openSpecimenDetailsById = function (plantId) {
   const plant = state.radarPlants.find(p => p.id === plantId) || state.feeds.find(p => p.id === plantId);
   if (plant) openSpecimenDetails(plant);
 };
@@ -1736,8 +1737,8 @@ function initApp() {
           console.warn("Settings sync to MariaDB failed:", err);
         }
       }
-      showToast(e.target.checked 
-        ? "Settings: Achievements will be published to the Community Feed" 
+      showToast(e.target.checked
+        ? "Settings: Achievements will be published to the Community Feed"
         : "Settings: Achievements will NOT be published to the Feed (Private)");
     });
   }
@@ -2009,7 +2010,7 @@ function renderNativeGoogleButtons() {
     if (!container) return;
     container.innerHTML =
       '<button type="button" class="native-google-btn">' +
-        '<span class="native-google-g">G</span><span>Sign in with Google</span>' +
+      '<span class="native-google-g">G</span><span>Sign in with Google</span>' +
       '</button>';
     container.querySelector("button").onclick = nativeGoogleSignIn;
   });
@@ -2149,7 +2150,7 @@ async function handleAuthLogout() {
     }
     const social = getNativeSocialLogin();
     if (social) {
-      try { await social.logout({ provider: "google" }); } catch (e) {}
+      try { await social.logout({ provider: "google" }); } catch (e) { }
     }
     clearSignedInUser();
     initGoogleAuth();
@@ -2440,7 +2441,7 @@ try {
   } else if (saved) {
     localStorage.removeItem("plantgo_saved_user");
   }
-} catch (e) {}
+} catch (e) { }
 
 // Google Identity Services starts immediately; Firebase auth is initialised by initApp
 initGoogleAuth();
