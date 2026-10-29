@@ -1753,6 +1753,18 @@ function initApp() {
   // Sync data with MariaDB backend
   syncFromBackend();
 
+  // iOS scrolls the whole page to keep a focused input above the keyboard and can
+  // leave it scrolled after the keyboard closes; the body can't scroll, so the
+  // header and nav bar stay off-screen until a reload
+  document.addEventListener("focusout", (e) => {
+    if (!e.target.matches || !e.target.matches("input, textarea")) return;
+    setTimeout(() => {
+      const el = document.activeElement;
+      if (el && el.matches && el.matches("input, textarea")) return;
+      if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    }, 100);
+  });
+
   // Reconnect when the network returns or the app comes back to the foreground
   window.addEventListener("online", () => {
     if (!state.backendConnected) syncFromBackend();

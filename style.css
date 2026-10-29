@@ -1874,7 +1874,9 @@ button.profile-avatar-large:disabled {
   padding: 10px 12px;
   border-radius: 10px;
   border: 1px solid var(--border-color, #dcdcdc);
-  font-size: 0.85rem;
+  /* 16px minimum: iOS Safari zooms in on focus for smaller text and stays zoomed,
+     pushing the header and nav bar off-screen */
+  font-size: 16px;
   font-family: inherit;
   outline: none;
   background: var(--bg-app, #f9fbf9);
