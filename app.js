@@ -1210,9 +1210,6 @@ async function runIdentification(photoPath, organ = "auto") {
       family: data.family,
       detectedOrgan: data.detectedOrgan,
       description: data.description,
-      care: data.care,
-      sun: data.sun,
-      water: data.water,
       category: data.category,
       candidates: data.candidates || [],
       image: photoPath
@@ -1226,6 +1223,22 @@ async function runIdentification(photoPath, organ = "auto") {
       : "Identification failed: " + msg, "error");
     renderCameraControls("preview");
   }
+}
+
+// Wikipedia and Google search links for a plant. The scientific name is the most precise query,
+// so Wikipedia searches by it alone (an exact title match redirects straight to the article).
+function plantLinksHtml(commonName, scientificName) {
+  const sci = (scientificName || '').trim();
+  const common = (commonName || '').trim();
+  const wikiQuery = sci || common;
+  if (!wikiQuery) return '';
+  const googleQuery = common && sci && common.toLowerCase() !== sci.toLowerCase() ? common + ' ' + sci : wikiQuery;
+  const link = (href, label) =>
+    '<a class="plant-link" href="' + href + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+  return '<div class="plant-links">' +
+    link('https://en.wikipedia.org/wiki/Special:Search?search=' + encodeURIComponent(wikiQuery), '📖 Wikipedia') +
+    link('https://www.google.com/search?q=' + encodeURIComponent(googleQuery), '🔎 Google') +
+    '</div>';
 }
 
 function displayIdentificationResult(result) {
@@ -1258,10 +1271,8 @@ function displayIdentificationResult(result) {
   const detailsHtml =
     '<div class="result-details" style="padding: 0.6rem 0; font-size: 0.82rem; color: var(--text-secondary);">' +
     '<p style="margin-bottom:4px;"><b>Family:</b> ' + escapeHtml(result.family) + (result.detectedOrgan ? ' • <b>Organ:</b> ' + escapeHtml(result.detectedOrgan) : '') + '</p>' +
-    (result.sun ? '<p style="margin-bottom:4px;"><b>Sunlight:</b> ' + escapeHtml(result.sun) + '</p>' : '') +
-    (result.water ? '<p style="margin-bottom:4px;"><b>Water:</b> ' + escapeHtml(result.water) + '</p>' : '') +
-    '<p style="margin-bottom:4px;"><b>Care:</b> ' + escapeHtml(result.care) + '</p>' +
     '<p><b>Notes:</b> ' + escapeHtml(result.description) + '</p>' +
+    plantLinksHtml(result.commonName, result.scientificName) +
     candidatesHtml +
     '</div>';
 
@@ -1323,8 +1334,6 @@ async function handlePlantSubmission(result) {
         confidence: result.confidence,
         family: result.family,
         description: result.description,
-        sun: result.sun,
-        water: result.water,
         image: result.image,
         category: result.category || "flowers",
         lat: state.currentLocation ? state.currentLocation.lat : null,
@@ -1712,9 +1721,10 @@ function openSpecimenDetails(plant) {
     const el = document.getElementById(id);
     if (el) el.textContent = value || 'Unknown';
   };
+  const linksContainer = document.getElementById('detail-links');
+  if (linksContainer) linksContainer.innerHTML = plantLinksHtml(plant.commonName || plant.title, plant.scientific);
+
   setText('detail-desc', plant.description || 'No notes for this sighting yet.');
-  setText('detail-sun', plant.sun);
-  setText('detail-water', plant.water);
   setText('detail-spotted-by', plant.user ? plant.user + (plant.isUser ? ' (You)' : '') : '');
   setText('detail-distance', plant.dist || (plant.createdAt ? timeAgo(plant.createdAt) : ''));
   setText('detail-status', plant.status);

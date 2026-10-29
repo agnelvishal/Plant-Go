@@ -1122,6 +1122,38 @@ button.profile-avatar-large:disabled {
   border: 1px solid rgba(46, 125, 50, 0.2);
 }
 
+/* Wikipedia / Google links shown with an identified plant */
+.plant-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0.6rem 0;
+}
+
+#detail-links .plant-links {
+  margin: 0.9rem 0;
+}
+
+.plant-link {
+  padding: 0.35rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  text-decoration: none;
+}
+
+/* The app shell disables text selection; plant names and descriptions stay copyable */
+.detail-sheet-title-box,
+.detail-section-body,
+.ai-results-header h3,
+.ai-results-header p,
+.result-details {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 .detail-grid-info {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

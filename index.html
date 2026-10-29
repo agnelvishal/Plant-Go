@@ -23,7 +23,7 @@
   {"@context":"https://schema.org","@type":"WebApplication","name":"PlantGo","url":"https://app.plantgo.club/","applicationCategory":"EducationalApplication","operatingSystem":"Web, Android","description":"Identify plants with your camera, pin sightings on a live map, vouch for other explorers and earn XP. PlantGo is a free citizen-science plant app for Android and web.","image":"https://app.plantgo.club/assets/og-image.jpg","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isPartOf":{"@type":"WebSite","name":"PlantGo","url":"https://plantgo.club/"}}
   </script>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=3.7">
+  <link rel="stylesheet" href="style.css?v=3.8">
 
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-Z1XWJPL78C"></script>
@@ -423,15 +423,10 @@
             <div class="detail-section-body" id="detail-desc"></div>
           </div>
 
+          <!-- Wikipedia / Google links for the plant -->
+          <div id="detail-links"></div>
+
           <div class="detail-section-card detail-grid-info">
-            <div class="detail-grid-item">
-              <span class="detail-grid-label">☀ Sun</span>
-              <span class="detail-grid-val" id="detail-sun"></span>
-            </div>
-            <div class="detail-grid-item">
-              <span class="detail-grid-label">💧 Water</span>
-              <span class="detail-grid-val" id="detail-water"></span>
-            </div>
             <div class="detail-grid-item">
               <span class="detail-grid-label">👤 Spotted by</span>
               <span class="detail-grid-val" id="detail-spotted-by"></span>
@@ -608,7 +603,7 @@
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=3.8"></script>
+  <script src="app.js?v=3.9"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>
