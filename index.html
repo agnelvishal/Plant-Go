@@ -23,7 +23,7 @@
   {"@context":"https://schema.org","@type":"WebApplication","name":"PlantGo","url":"https://app.plantgo.club/","applicationCategory":"EducationalApplication","operatingSystem":"Web, Android","description":"Identify plants with your camera, pin sightings on a live map, vouch for other explorers and earn XP. PlantGo is a free citizen-science plant app for Android and web.","image":"https://app.plantgo.club/assets/og-image.jpg","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"isPartOf":{"@type":"WebSite","name":"PlantGo","url":"https://plantgo.club/"}}
   </script>
   <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=3.6">
+  <link rel="stylesheet" href="style.css?v=3.7">
 
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-Z1XWJPL78C"></script>
@@ -43,9 +43,7 @@
   <script src="capacitor.js"></script>
   <!-- Leaflet CSS for OpenStreetMap (Bundled Locally - No SRI or CDN blocks) -->
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-  <!-- Firebase App & Auth SDK (Compat) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <!-- Firebase Auth SDK is loaded on demand by app.js so it never blocks the page -->
   <!-- Google Identity Services SDK -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Leaflet JS (Bundled Locally - No SRI or CDN blocks) -->
@@ -127,14 +125,6 @@
             <span class="capture-text">Capture Plant</span>
           </button>
 
-          <!-- Gesture Dashboard Mode Extra Overlays -->
-          <div class="gesture-header-pill" style="display: none;">
-            <span style="color:var(--primary)">★</span> Walk outside to explore nearby
-          </div>
-          <button class="gesture-sheet-trigger" style="display: none;">
-            📋 Review queue (2)
-          </button>
-
         </div>
       </div>
 
@@ -148,7 +138,8 @@
           <!-- Camera upper toolbar -->
           <div class="camera-controls-top" style="position:relative; z-index:10;">
             <button class="btn-camera-back" id="camera-back-btn" onclick="closeCameraView()">← Back to Map</button>
-            <input type="file" id="web-file-input" accept="image/*" capture="environment" style="display:none;" />
+            <input type="file" id="web-file-input" accept="image/*" style="display:none;" />
+            <input type="file" id="web-camera-input" accept="image/*" capture="environment" style="display:none;" />
             <span class="camera-top-title">Identify a Plant</span>
           </div>
 
@@ -490,32 +481,6 @@
         </a>
       </nav>
 
-      <!-- Radial Menu Layout components (Not used, but kept for JS handling) -->
-      <div class="phone-radial-menu-wrapper">
-        <button class="radial-trigger-btn" id="radialTrigger">
-          <span class="radial-trigger-icon">☘</span>
-        </button>
-        <div class="radial-menu-items">
-          <a href="#" class="radial-item" data-tab="map" style="--i:0;" title="Map">
-            <svg viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-          </a>
-          <!-- Radar hidden for now
-          <a href="#" class="radial-item" data-tab="radar" style="--i:1;" title="Radar">
-            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6zm0-10c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4z"/></svg>
-          </a>
-          -->
-          <a href="#" class="radial-item radial-item-camera" data-tab="ai-identify" style="--i:2;" title="Scan">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M9 2L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5z"/></svg>
-          </a>
-          <a href="#" class="radial-item" data-tab="verification" style="--i:3;" title="Verify">
-            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-          </a>
-          <a href="#" class="radial-item" data-tab="profile" style="--i:4;" title="Profile">
-            <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
-          </a>
-        </div>
-      </div>
-
       <!-- Home indicator bar -->
       <!-- Firebase Authentication Modal -->
   <div class="auth-modal-overlay" id="auth-modal-overlay" onclick="if(event.target === this) closeAuthModal()">
@@ -643,7 +608,7 @@
   </div>
 
   <!-- Load script logic -->
-  <script src="app.js?v=3.7"></script>
+  <script src="app.js?v=3.8"></script>
     <!-- Toast Notification System -->
   <div class="toast-notification" id="app-toast"></div>
 </body>

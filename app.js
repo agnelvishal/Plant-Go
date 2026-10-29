@@ -6,7 +6,6 @@ const Camera = CapacitorPlugins.Camera || null;
 const CameraResultType = { Uri: 'uri', Base64: 'base64', DataUrl: 'dataUrl' };
 const CameraSource = { Prompt: 'PROMPT', Camera: 'CAMERA', Photos: 'PHOTOS' };
 const Geolocation = CapacitorPlugins.Geolocation || null;
-const Permissions = CapacitorPlugins.Permissions || null;
 
 // --- STATE MANAGEMENT ---
 // --- MARIADB BACKEND API CONFIGURATION ---
@@ -49,7 +48,19 @@ async function apiFetch(path, options = {}, timeoutMs = 8000) {
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   const token = getSessionToken();
   if (token) headers["Authorization"] = "Bearer " + token;
-  const res = await fetchWithTimeout(API_BASE + path, { ...options, headers }, timeoutMs);
+  let res;
+  try {
+    res = await fetchWithTimeout(API_BASE + path, { ...options, headers }, timeoutMs);
+  } catch (err) {
+    // fetch rejects with a TypeError when the network is gone (timeouts are AbortError);
+    // mark offline so the online/visibility listeners reconnect
+    if (err instanceof TypeError) {
+      state.backendConnected = false;
+      updateBackendStatusUI(false, "Offline mode (connection lost)");
+      err.offline = true;
+    }
+    throw err;
+  }
   // Expired session: drop back to the guest state (only once, even with parallel requests)
   if (res.status === 401 && token && getSessionToken() === token) {
     clearSignedInUser();
@@ -83,6 +94,7 @@ function applyUserStats(u) {
 
 // Loads profile, feeds, radar and settings for the current session (or guest)
 async function loadUserData() {
+  state.lastDataLoad = Date.now();
   const [profileRes, feedsRes, radarRes, settingsRes] = await Promise.all([
     apiFetch("/profile").then(r => r.ok ? r.json() : null).catch(() => null),
     apiFetch("/feeds").then(r => r.ok ? r.json() : null).catch(() => null),
@@ -101,20 +113,29 @@ async function loadUserData() {
   if (Array.isArray(radarRes)) {
     state.radarPlants = radarRes;
     updateRadarDistances();
-    renderRadarList();
+    if (state.activeTab === 'radar') renderRadarList();
     renderMapPlantMarkers();
   }
 
   loadBlockedUsers();
 
-  if (settingsRes) {
+  // Guests keep the settings stored on this device
+  if (settingsRes && getSessionToken()) {
+    const gpsChanged = state.settings.highAccuracyGps !== settingsRes.highAccuracyGps;
     state.settings.publishAchievementsToFeed = settingsRes.publishAchievementsToFeed;
     state.settings.highAccuracyGps = settingsRes.highAccuracyGps;
+    if (gpsChanged) restartLocationWatch();
     const pubEl = document.getElementById("setting-publish-achievements");
     if (pubEl) pubEl.checked = state.settings.publishAchievementsToFeed;
     const gpsEl = document.getElementById("setting-high-gps");
     if (gpsEl) gpsEl.checked = state.settings.highAccuracyGps;
   }
+}
+
+// The feed and map only load at startup otherwise; refetch when the user comes back to them
+function refreshDataIfStale(maxAgeMs = 60000) {
+  if (!state.backendConnected || backendSyncPromise) return;
+  if (Date.now() - (state.lastDataLoad || 0) > maxAgeMs) loadUserData();
 }
 
 // Concurrent callers (startup, "online" event, a capture retry) share one sync
@@ -149,7 +170,6 @@ async function doSyncFromBackend() {
     ];
   }
 
-  let healthRes = null;
   let activeEndpoint = null;
   let lastError = null;
 
@@ -159,7 +179,6 @@ async function doSyncFromBackend() {
       if (res && res.ok) {
         const data = await res.json().catch(() => null);
         if (data && data.status === "ok") {
-          healthRes = res;
           activeEndpoint = ep;
           API_BASE = ep;
           break;
@@ -228,8 +247,8 @@ window.syncFromBackend = syncFromBackend;
 const state = {
   backendConnected: false,
   activeTab: 'map',
-  layout: 'glass-dock',
-  theme: 'light-mint',
+  lastDataLoad: 0,
+  radarLocation: null,
   mapFilter: 'all',
   feedFilter: 'all',
   selectedPlantId: null,
@@ -244,7 +263,7 @@ const state = {
   mapMarkers: [],
   settings: {
     publishAchievementsToFeed: localStorage.getItem('plantgo_publish_feed') !== 'false', // Default true
-    highAccuracyGps: true
+    highAccuracyGps: localStorage.getItem('plantgo_high_gps') !== 'false' // Default true
   },
   userStats: {
     discoveredCount: 0,
@@ -289,12 +308,14 @@ function changeTab(tabName) {
         state.map.invalidateSize();
       }, 150);
     }
+    refreshDataIfStale();
   }
   if (tabName === 'ai-identify') {
     initCameraFlow();
   }
   if (tabName === 'feeds') {
     renderFeeds();
+    refreshDataIfStale();
   }
   if (tabName === 'radar') {
     renderRadarList();
@@ -302,6 +323,26 @@ function changeTab(tabName) {
   if (tabName === 'profile') {
     updateProfileUI();
     initGoogleAuth();
+  }
+}
+
+// Saves both settings for a signed-in user; guests keep them on this device only
+async function saveSettings() {
+  if (!getSessionToken()) return true;
+  try {
+    const resp = await apiFetch("/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        publishAchievementsToFeed: state.settings.publishAchievementsToFeed,
+        highAccuracyGps: state.settings.highAccuracyGps
+      })
+    });
+    if (!resp.ok) throw new Error("Server error " + resp.status);
+    return true;
+  } catch (err) {
+    console.warn("Settings sync failed:", err);
+    showToast(err.offline ? "You're offline. Settings weren't saved." : "Couldn't save settings: " + err.message, "error");
+    return false;
   }
 }
 
@@ -591,9 +632,13 @@ function handleUserLocationSuccess(lat, lng, accuracy, autoFly = false) {
   hideLocationBanner();
   updateGpsStatusBadge('active', 'GPS Active 📍');
 
-  // 5. Refresh distances to nearby community sightings
-  updateRadarDistances();
-  renderRadarList();
+  // 5. Refresh distances to nearby community sightings. GPS ticks every few seconds,
+  // so only re-sort after a real move, and only redraw the list when it's visible.
+  if (!state.radarLocation || distanceMeters(state.radarLocation, state.currentLocation) > 25) {
+    state.radarLocation = { lat, lng };
+    updateRadarDistances();
+    if (state.activeTab === 'radar') renderRadarList();
+  }
 }
 
 function distanceMeters(a, b) {
@@ -790,7 +835,7 @@ function startLocationWatch() {
           console.warn('Web location watch error:', err);
         },
         {
-          enableHighAccuracy: true,
+          enableHighAccuracy: state.settings.highAccuracyGps,
           timeout: 15000,
           maximumAge: 5000
         }
@@ -799,6 +844,21 @@ function startLocationWatch() {
       console.warn('Web Geolocation watch error:', err);
     }
   }
+}
+
+// Applies a changed accuracy setting to a watch that is already running
+function restartLocationWatch() {
+  const id = state.locationWatcher;
+  if (id == null) return;
+  state.locationWatcher = null;
+  const nativeGeo = getCapacitorGeolocation();
+  try {
+    if (isCapacitorNative() && nativeGeo) nativeGeo.clearWatch({ id });
+    else navigator.geolocation.clearWatch(id);
+  } catch (err) {
+    console.warn('Could not stop location watch:', err);
+  }
+  startLocationWatch();
 }
 
 window.checkAndRequestLocationPermission = checkAndRequestLocationPermission;
@@ -876,11 +936,13 @@ async function startCameraCapture() {
     }
   }
 
-  // 3. Fallback: try Capacitor Camera or Web File Input
+  // 3. Fallback: try Capacitor Camera, else let the user pick. Browsers block a
+  // programmatic file-input click once the tap's activation was spent awaiting
+  // getUserMedia, so the fallback needs a fresh tap.
   if (Camera) {
     await requestAndLaunchNativeCamera("camera");
   } else {
-    triggerWebFileInput();
+    renderCameraControls("camera-fallback");
   }
 }
 
@@ -905,16 +967,17 @@ function captureLiveVideoFrame() {
   showToast("Photo captured! Choose organ to identify 🌿", "success");
 }
 
-function triggerWebFileInput() {
-  const fileInput = document.getElementById("web-file-input");
+// useCamera opens the phone camera; otherwise the photo library (capture would skip it)
+function triggerWebFileInput(useCamera = false) {
+  const fileInput = document.getElementById(useCamera ? "web-camera-input" : "web-file-input");
   if (fileInput) {
     fileInput.value = "";
     fileInput.onchange = (e) => {
       const file = e.target.files && e.target.files[0];
       if (!file) return;
       const reader = new FileReader();
-      reader.onload = (event) => {
-        state.photoData = event.target.result;
+      reader.onload = async (event) => {
+        state.photoData = await downscaleImage(event.target.result);
         stopLiveVideoStream();
         setPreviewPhoto(state.photoData);
         renderCameraControls("preview");
@@ -925,6 +988,27 @@ function triggerWebFileInput() {
   } else {
     showToast("Photo picker is not available on this device", "error");
   }
+}
+
+// Phone photos can be 4-12 MB; cap them at the same 1600px JPEG the native camera returns
+function downscaleImage(dataUrl, maxSize = 1600, quality = 0.85) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.naturalWidth * scale);
+      canvas.height = Math.round(img.naturalHeight * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      try {
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch (e) {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
 
 // Shows the chosen photo as a card on the identify screen (null clears it)
@@ -960,7 +1044,19 @@ function renderCameraControls(mode) {
     if (shutterBtn) shutterBtn.onclick = captureLiveVideoFrame;
 
     const galleryBtn = document.getElementById("btn-switch-gallery");
-    if (galleryBtn) galleryBtn.onclick = triggerWebFileInput;
+    if (galleryBtn) galleryBtn.onclick = () => triggerWebFileInput();
+
+  } else if (mode === "camera-fallback") {
+    cameraControls.innerHTML = `
+      <div class="camera-preview-panel" style="text-align:center;">
+        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">Live camera isn't available. Take a photo or choose one instead.</p>
+        <div class="camera-preview-menu">
+          <button class="btn-secondary" id="btn-fallback-gallery" style="flex:1;">🖼 Gallery</button>
+          <button class="btn-primary" id="btn-fallback-camera" style="flex:1;">📷 Take Photo</button>
+        </div>
+      </div>`;
+    document.getElementById("btn-fallback-gallery").onclick = () => triggerWebFileInput();
+    document.getElementById("btn-fallback-camera").onclick = () => triggerWebFileInput(true);
 
   } else if (mode === "initial") {
     setPreviewPhoto(null);
@@ -1063,10 +1159,6 @@ async function requestAndLaunchNativeCamera(source = "camera") {
   }
 }
 
-async function checkAndRequestCameraPermission() {
-  await startCameraCapture();
-}
-
 async function checkAndRequestGalleryPermission() {
   if (isCapacitorNative() && Camera) {
     await requestAndLaunchNativeCamera("photos");
@@ -1085,7 +1177,6 @@ window.openCaptureFlow = openCaptureFlow;
 window.closeCameraView = closeCameraView;
 window.startCameraCapture = startCameraCapture;
 window.captureLiveVideoFrame = captureLiveVideoFrame;
-window.checkAndRequestCameraPermission = checkAndRequestCameraPermission;
 window.checkAndRequestGalleryPermission = checkAndRequestGalleryPermission;
 
 
@@ -1124,14 +1215,15 @@ async function runIdentification(photoPath, organ = "auto") {
       water: data.water,
       category: data.category,
       candidates: data.candidates || [],
-      remainingRequests: data.remainingRequests,
       image: photoPath
     });
     renderCameraControls("preview");
   } catch (err) {
     console.error("Pl@ntNet identification error:", err);
     const msg = err.name === "AbortError" ? "the request timed out" : err.message;
-    showToast("Identification failed: " + msg, "error");
+    showToast(err.offline
+      ? "You're offline. Connect to the internet to identify plants."
+      : "Identification failed: " + msg, "error");
     renderCameraControls("preview");
   }
 }
@@ -1185,9 +1277,16 @@ function displayIdentificationResult(result) {
     renderCameraControls("initial");
   };
 
-  document.getElementById("ai-confirm-btn").onclick = () => {
-    overlay.classList.remove("active");
-    handlePlantSubmission(result);
+  // The result stays open until the save succeeds, so sign-in, the guidelines prompt
+  // or a failed save never forces a second identification
+  const confirmBtn = document.getElementById("ai-confirm-btn");
+  confirmBtn.onclick = async () => {
+    confirmBtn.disabled = true;
+    try {
+      await handlePlantSubmission(result);
+    } finally {
+      confirmBtn.disabled = false;
+    }
   };
 
   overlay.classList.add("active");
@@ -1197,25 +1296,28 @@ function displayIdentificationResult(result) {
 async function handlePlantSubmission(result) {
   if (!(await ensureSession())) {
     showToast("Sign in to save your discovery and earn XP 🌱", "error");
-    renderCameraControls("preview");
     openAuthModal();
     return;
   }
   if (!(await ensureBackendConnected())) {
     showToast("You're offline. Connect to the internet to submit this sighting.", "error");
-    renderCameraControls("preview");
     return;
   }
-  if (!(await confirmCommunityGuidelines())) {
-    renderCameraControls("preview");
-    return;
-  }
+  if (!(await confirmCommunityGuidelines())) return;
+  if (!state.currentLocation && !window.confirm(
+    "Your location isn't available yet, so this sighting won't appear on the map.\n\nSave it anyway?"
+  )) return;
+
+  // Retries reuse the same id, so a save that timed out on our side but reached the
+  // server isn't stored (and rewarded) twice
+  if (!result.clientId) result.clientId = generateClientId();
 
   showToast("Saving your discovery...");
   try {
     const resp = await apiFetch("/feeds/sighting", {
       method: "POST",
       body: JSON.stringify({
+        clientId: result.clientId,
         commonName: result.commonName,
         scientificName: result.scientificName,
         confidence: result.confidence,
@@ -1236,7 +1338,10 @@ async function handlePlantSubmission(result) {
     }
 
     applyUserStats(data.userStats);
+    document.querySelector(".ai-results-overlay").classList.remove("active");
 
+    state.feeds = state.feeds.filter(f => f.id !== data.sighting.id);
+    state.radarPlants = state.radarPlants.filter(p => p.id !== data.sighting.id);
     state.feeds.unshift(data.sighting);
     if (data.achievement) state.feeds.unshift(data.achievement);
     if (data.sighting.lat != null) {
@@ -1257,9 +1362,15 @@ async function handlePlantSubmission(result) {
     changeTab("feeds");
   } catch (err) {
     console.warn("Failed to save sighting:", err);
-    showToast("Could not save sighting: " + err.message, "error");
-    renderCameraControls("preview");
+    showToast(err.offline
+      ? "You're offline. Connect to the internet to submit this sighting."
+      : "Could not save sighting: " + (err.name === "AbortError" ? "the request timed out" : err.message), "error");
   }
+}
+
+function generateClientId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 12);
 }
 
 // --- FEEDS IMPLEMENTATION ---
@@ -1330,7 +1441,9 @@ function renderFeeds() {
             <span>Status: ${escapeHtml(item.status)}</span>
             <span>${item.votes} community ${item.votes === 1 ? 'vouch' : 'vouches'}</span>
           </div>
-          ${item.isUser ? '' : `<button class="btn-secondary feed-vouch-btn" onclick="vouchSighting('${escapeHtml(item.id)}')">✓ Vouch for this ID (+50 XP)</button>`}
+          ${item.isUser ? '' : item.voted
+            ? `<button class="btn-secondary feed-vouch-btn" disabled>✓ You vouched for this</button>`
+            : `<button class="btn-secondary feed-vouch-btn" onclick="vouchSighting('${escapeHtml(item.id)}')">✓ Vouch for this ID (+50 XP)</button>`}
         </div>
       </div>
     `;
@@ -1476,26 +1589,40 @@ function timeAgo(dateValue) {
   return days < 30 ? days + 'd ago' : new Date(then).toLocaleDateString();
 }
 
+const vouchesInFlight = new Set();
+
 window.vouchSighting = async function (feedId) {
+  if (vouchesInFlight.has(feedId)) return;
   if (!(await ensureSession())) {
     showToast("Sign in to vouch for sightings", "error");
     openAuthModal();
     return;
   }
+  const markVoted = (fields) => {
+    [state.feeds, state.radarPlants].forEach(list => {
+      const item = list.find(f => f.id === feedId);
+      if (item) Object.assign(item, fields, { voted: true });
+    });
+    renderFeeds();
+    if (state.activeTab === 'radar') renderRadarList();
+  };
+  vouchesInFlight.add(feedId);
   try {
     const resp = await apiFetch("/feeds/" + encodeURIComponent(feedId) + "/vote", { method: "POST" });
     const data = await resp.json().catch(() => null);
+    if (resp.status === 409) {
+      markVoted({});
+      showToast("You already vouched for this sighting");
+      return;
+    }
     if (!resp.ok) throw new Error((data && data.error) || "Server error " + resp.status);
-    [state.feeds, state.radarPlants].forEach(list => {
-      const item = list.find(f => f.id === feedId);
-      if (item) Object.assign(item, { votes: data.feed.votes, verified: data.feed.verified, status: data.feed.status });
-    });
     applyUserStats(data.userStats);
-    renderFeeds();
-    renderRadarList();
+    markVoted({ votes: data.feed.votes, verified: data.feed.verified, status: data.feed.status });
     showToast("✓ Vouched! +50 XP");
   } catch (err) {
-    showToast(err.message, "error");
+    showToast(err.offline ? "You're offline. Connect to the internet to vouch." : err.message, "error");
+  } finally {
+    vouchesInFlight.delete(feedId);
   }
 };
 
@@ -1594,7 +1721,7 @@ function openSpecimenDetails(plant) {
   setText('detail-votes', plant.votes + ' community ' + (plant.votes === 1 ? 'vouch' : 'vouches'));
 
   const voteBtn = document.getElementById('detail-vote-action-btn');
-  if (voteBtn) voteBtn.style.display = plant.isUser ? 'none' : '';
+  if (voteBtn) voteBtn.style.display = plant.isUser || plant.voted ? 'none' : '';
   const reportBtn = document.getElementById('detail-report-btn');
   if (reportBtn) reportBtn.style.display = plant.isUser ? 'none' : '';
 
@@ -1713,22 +1840,15 @@ function initApp() {
   if (publishToggle) {
     publishToggle.checked = state.settings.publishAchievementsToFeed;
     publishToggle.addEventListener("change", async (e) => {
-      state.settings.publishAchievementsToFeed = e.target.checked;
-      localStorage.setItem("plantgo_publish_feed", e.target.checked ? "true" : "false");
-      if (state.backendConnected && getSessionToken()) {
-        try {
-          await apiFetch("/settings", {
-            method: "PUT",
-            body: JSON.stringify({
-              publishAchievementsToFeed: state.settings.publishAchievementsToFeed,
-              highAccuracyGps: state.settings.highAccuracyGps
-            })
-          });
-        } catch (err) {
-          console.warn("Settings sync to MariaDB failed:", err);
-        }
+      const checked = e.target.checked;
+      state.settings.publishAchievementsToFeed = checked;
+      if (!(await saveSettings())) {
+        state.settings.publishAchievementsToFeed = !checked;
+        publishToggle.checked = !checked;
+        return;
       }
-      showToast(e.target.checked
+      localStorage.setItem("plantgo_publish_feed", checked ? "true" : "false");
+      showToast(checked
         ? "Settings: Achievements will be published to the Community Feed"
         : "Settings: Achievements will NOT be published to the Feed (Private)");
     });
@@ -1738,9 +1858,17 @@ function initApp() {
   const gpsToggle = document.getElementById('setting-high-gps');
   if (gpsToggle) {
     gpsToggle.checked = state.settings.highAccuracyGps;
-    gpsToggle.addEventListener('change', (e) => {
-      state.settings.highAccuracyGps = e.target.checked;
-      showToast(e.target.checked ? 'High accuracy GPS enabled' : 'Battery saver GPS mode active');
+    gpsToggle.addEventListener('change', async (e) => {
+      const checked = e.target.checked;
+      state.settings.highAccuracyGps = checked;
+      if (!(await saveSettings())) {
+        state.settings.highAccuracyGps = !checked;
+        gpsToggle.checked = !checked;
+        return;
+      }
+      localStorage.setItem('plantgo_high_gps', checked ? 'true' : 'false');
+      restartLocationWatch();
+      showToast(checked ? 'High accuracy GPS enabled' : 'Battery saver GPS mode active');
     });
   }
 
@@ -1765,13 +1893,40 @@ function initApp() {
     }, 100);
   });
 
+  // Android back button: close the topmost overlay, then return to the map, then exit.
+  // Without a listener Capacitor would close the app from any screen.
+  const AppPlugin = CapacitorPlugins.App;
+  if (isCapacitorNative() && AppPlugin) {
+    AppPlugin.addListener("backButton", handleBackButton);
+  }
+
   // Reconnect when the network returns or the app comes back to the foreground
   window.addEventListener("online", () => {
     if (!state.backendConnected) syncFromBackend();
+    if (!fbAuth) initFirebaseAuth();
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && !state.backendConnected) syncFromBackend();
+    if (document.visibilityState !== "visible") return;
+    if (!state.backendConnected) syncFromBackend();
+    else refreshDataIfStale();
   });
+}
+
+function handleBackButton() {
+  const isOpen = (sel) => {
+    const el = document.querySelector(sel);
+    return el && el.classList.contains("active");
+  };
+  const permissionDialog = document.getElementById("permission-dialog");
+  if (permissionDialog) permissionDialog.remove();
+  else if (isOpen("#guidelines-overlay")) resolveGuidelines(false);
+  else if (isOpen("#auth-modal-overlay")) closeAuthModal();
+  else if (isOpen("#edit-profile-overlay")) closeEditProfile();
+  else if (isOpen("#post-actions-overlay")) closePostActions();
+  else if (isOpen(".detail-bottom-sheet")) closeSpecimenDetails();
+  else if (isOpen(".ai-results-overlay")) document.querySelector(".ai-results-overlay").classList.remove("active");
+  else if (state.activeTab !== "map") changeTab("map");
+  else CapacitorPlugins.App.exitApp();
 }
 
 if (document.readyState === 'loading') {
@@ -1798,28 +1953,61 @@ let fbAuth = null;
 let currentUser = null;
 let authIsSignUp = false;
 
-function initFirebaseAuth() {
-  try {
-    if (typeof firebase !== 'undefined') {
-      if (!firebase.apps.length) {
-        firebase.initializeApp(firebaseConfig);
-      }
-      fbAuth = firebase.auth();
+const FIREBASE_SDK_URLS = [
+  "https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js",
+  "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"
+];
 
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = () => {
+      script.remove();
+      reject(new Error("Could not load " + src));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+// The SDK loads in the background so a slow or offline gstatic never blocks the app;
+// a failed load is retried the next time sign-in needs it
+let firebaseSetupPromise = null;
+const loadedFirebaseScripts = new Set();
+function setupFirebase() {
+  if (fbAuth) return Promise.resolve(fbAuth);
+  if (!firebaseSetupPromise) {
+    firebaseSetupPromise = (async () => {
+      for (const src of FIREBASE_SDK_URLS) {
+        if (loadedFirebaseScripts.has(src)) continue;
+        await loadScript(src);
+        loadedFirebaseScripts.add(src);
+      }
+      if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+      fbAuth = firebase.auth();
       fbAuth.onAuthStateChanged((user) => {
         if (user) {
+          // A stored session for the same account is still valid; skip the exchange
+          // (and the duplicate data load) that would otherwise run on every launch
+          if (getSessionToken() && currentUser && currentUser.provider === "firebase" &&
+              (currentUser.email || "") === (user.email || "")) return;
           signInToBackendWithFirebase(user);
         } else if (currentUser && currentUser.provider === "firebase") {
           clearSignedInUser();
         }
       });
-      console.log("☘ Firebase Auth initialized successfully");
-    } else {
-      console.warn("Firebase SDK not yet loaded.");
-    }
-  } catch (err) {
-    console.error("Firebase Auth initialization warning:", err);
+      return fbAuth;
+    })().catch(err => {
+      firebaseSetupPromise = null;
+      throw err;
+    });
   }
+  return firebaseSetupPromise;
+}
+
+function initFirebaseAuth() {
+  setupFirebase().catch(err => console.warn("Firebase Auth not available yet:", err.message));
 
   // Setup DOM Event Listeners as well as inline handlers
   const headerBtn = document.getElementById('header-auth-btn');
@@ -1943,11 +2131,10 @@ async function handleAuthSubmit(e) {
 
   try {
     if (!fbAuth) {
-      if (typeof firebase !== 'undefined') {
-        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        fbAuth = firebase.auth();
-      } else {
-        throw new Error('Firebase SDK is not loaded. Please check your internet connection.');
+      try {
+        await setupFirebase();
+      } catch (loadErr) {
+        throw new Error("Couldn't load sign-in. Please check your internet connection.");
       }
     }
 
@@ -2027,13 +2214,21 @@ function renderNativeGoogleButtons() {
   });
 }
 
+let googleAuthInitialized = false;
+let googleAuthRetryTimer = null;
+let googleAuthRetries = 0;
+
 function initGoogleAuth() {
   if (getNativeSocialLogin()) {
     renderNativeGoogleButtons();
     return;
   }
   if (typeof google !== "undefined" && google.accounts && google.accounts.id) {
-    google.accounts.id.initialize({
+    if (googleAuthRetryTimer) clearTimeout(googleAuthRetryTimer);
+    googleAuthRetryTimer = null;
+    if (!googleAuthInitialized) {
+      googleAuthInitialized = true;
+      google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
       callback: handleGoogleCredentialResponse,
       auto_select: false,
@@ -2041,7 +2236,8 @@ function initGoogleAuth() {
       // Use the browser's own sign-in sheet where supported; the popup tab fallback
       // can get stuck on mobile and never hand the credential back to this page
       use_fedcm_for_button: true
-    });
+      });
+    }
 
     // Render button inside Auth Modal
     const modalBtnContainer = document.getElementById("google-signin-modal-btn");
@@ -2070,9 +2266,18 @@ function initGoogleAuth() {
         shape: "pill"
       });
     }
-  } else {
-    // Retry once if Google script is still asynchronously loading
-    setTimeout(initGoogleAuth, 500);
+  } else if (!googleAuthRetryTimer) {
+    // Google's script loads async; wait for it up to ~15s per attempt (one pending
+    // timer at a time, so repeated calls don't stack loops)
+    if (googleAuthRetries >= 30) {
+      googleAuthRetries = 0;
+      return;
+    }
+    googleAuthRetries++;
+    googleAuthRetryTimer = setTimeout(() => {
+      googleAuthRetryTimer = null;
+      initGoogleAuth();
+    }, 500);
   }
 }
 
