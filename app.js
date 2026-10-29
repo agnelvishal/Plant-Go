@@ -2057,7 +2057,7 @@ function initGoogleAuth() {
         theme: "outline",
         size: "large",
         type: "standard",
-        text: "signin_with",
+        text: "continue_with",
         shape: "rectangular",
         logo_alignment: "left",
         width: 280
@@ -2072,7 +2072,7 @@ function initGoogleAuth() {
         theme: "filled_blue",
         size: "medium",
         type: "standard",
-        text: "signin_with",
+        text: "continue_with",
         shape: "pill"
       });
     }
