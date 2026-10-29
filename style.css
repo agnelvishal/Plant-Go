@@ -73,7 +73,6 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  user-select: none;
   transition: background-color 0.4s ease;
   /* Ensure edge-to-edge for mobile */
   width: 100%;
@@ -1144,14 +1143,16 @@ button.profile-avatar-large:disabled {
   text-decoration: none;
 }
 
-/* The app shell disables text selection; plant names and descriptions stay copyable */
-.detail-sheet-title-box,
-.detail-section-body,
-.ai-results-header h3,
-.ai-results-header p,
-.result-details {
-  -webkit-user-select: text;
-  user-select: text;
+/* Text is selectable app-wide; controls are not, so a long press on them doesn't select their label */
+button,
+[role="button"],
+[onclick],
+.nav-item,
+.map-filter-chip,
+.feed-chip,
+.leaflet-control-container {
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .detail-grid-info {
