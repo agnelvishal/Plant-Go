@@ -117,7 +117,22 @@ async function loadUserData() {
   }
 }
 
-async function syncFromBackend() {
+// Concurrent callers (startup, "online" event, a capture retry) share one sync
+let backendSyncPromise = null;
+function syncFromBackend() {
+  if (!backendSyncPromise) {
+    backendSyncPromise = doSyncFromBackend().finally(() => { backendSyncPromise = null; });
+  }
+  return backendSyncPromise;
+}
+
+// The startup sync can fail if the device was offline at launch; re-check before giving up
+async function ensureBackendConnected() {
+  if (!state.backendConnected) await syncFromBackend();
+  return state.backendConnected;
+}
+
+async function doSyncFromBackend() {
   updateBackendStatusUI(false, "Connecting to MariaDB backend...", true);
 
   let candidateEndpoints = [];
@@ -1095,7 +1110,7 @@ async function runIdentification(photoPath, organ = "auto") {
     renderCameraControls("initial");
     return;
   }
-  if (!state.backendConnected) {
+  if (!(await ensureBackendConnected())) {
     showToast("You're offline. Connect to the internet to identify plants.", "error");
     return;
   }
@@ -1201,7 +1216,7 @@ async function handlePlantSubmission(result) {
     openAuthModal();
     return;
   }
-  if (!state.backendConnected) {
+  if (!(await ensureBackendConnected())) {
     showToast("You're offline. Connect to the internet to submit this sighting.", "error");
     renderCameraControls("preview");
     return;
@@ -1752,6 +1767,14 @@ function initApp() {
 
   // Sync data with MariaDB backend
   syncFromBackend();
+
+  // Reconnect when the network returns or the app comes back to the foreground
+  window.addEventListener("online", () => {
+    if (!state.backendConnected) syncFromBackend();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && !state.backendConnected) syncFromBackend();
+  });
 }
 
 if (document.readyState === 'loading') {
