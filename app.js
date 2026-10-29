@@ -245,6 +245,8 @@ const state = {
   lastDataLoad: 0,
   radarLocation: null,
   mapFilter: 'all',
+  mapSearch: '',
+  mapSearchResults: null, // server results for the current search; null when not searching
   feedFilter: 'all',
   selectedPlantId: null,
   photoData: null,
@@ -501,6 +503,32 @@ function addMapControls() {
     };
   }
 
+  // Hook up the search box
+  const searchInput = document.getElementById('map-search-input');
+  if (searchInput) {
+    let searchTimer = null;
+    let searchSeq = 0;
+    searchInput.addEventListener('input', () => {
+      state.mapSearch = searchInput.value.trim().toLowerCase();
+      clearTimeout(searchTimer);
+      const seq = ++searchSeq;
+      if (!state.mapSearch) {
+        state.mapSearchResults = null;
+        renderMapPlantMarkers();
+        return;
+      }
+      // Filter what is loaded right away, then ask the server so older sightings are found too
+      renderMapPlantMarkers();
+      searchTimer = setTimeout(async () => {
+        const res = await apiFetch('/radar?q=' + encodeURIComponent(state.mapSearch))
+          .then(r => r.ok ? r.json() : null).catch(() => null);
+        if (seq !== searchSeq || !Array.isArray(res)) return; // a newer keystroke superseded this one
+        state.mapSearchResults = res;
+        renderMapPlantMarkers(true);
+      }, 350);
+    });
+  }
+
   // Hook up filter chips
   document.querySelectorAll('.map-filter-chip').forEach(chip => {
     chip.addEventListener('click', (e) => {
@@ -512,17 +540,19 @@ function addMapControls() {
   });
 }
 
-function renderMapPlantMarkers() {
+function renderMapPlantMarkers(fitToResults = false) {
   if (!state.map || typeof L === 'undefined') return;
 
   // Clear existing markers
   state.mapMarkers.forEach(m => state.map.removeLayer(m));
   state.mapMarkers = [];
 
-  const plants = state.radarPlants.filter(p => {
+  const plants = (state.mapSearchResults || state.radarPlants).filter(p => {
     if (p.lat == null || p.lng == null) return false;
-    if (state.mapFilter === 'all') return true;
-    return p.category === state.mapFilter;
+    if (state.mapFilter !== 'all' && p.category !== state.mapFilter) return false;
+    if (!state.mapSearch) return true;
+    return [p.commonName, p.title, p.scientific, p.family, p.category]
+      .some(v => v && String(v).toLowerCase().includes(state.mapSearch));
   });
 
   plants.forEach(plant => {
@@ -551,6 +581,12 @@ function renderMapPlantMarkers() {
 
     state.mapMarkers.push(marker);
   });
+
+  // Bring far-away matches into view
+  if (fitToResults && plants.length) {
+    const bounds = L.latLngBounds(plants.map(p => [p.lat, p.lng]));
+    state.map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
+  }
 }
 
 // --- GPS LOCATION & PERMISSION MANAGEMENT ---
@@ -1680,7 +1716,7 @@ function renderRadarList() {
 // --- SPECIMEN DETAILS DRAWER ---
 
 window.openSpecimenDetailsById = function (plantId) {
-  const plant = state.radarPlants.find(p => p.id === plantId) || state.feeds.find(p => p.id === plantId);
+  const plant = state.radarPlants.find(p => p.id === plantId) || (state.mapSearchResults || []).find(p => p.id === plantId) || state.feeds.find(p => p.id === plantId);
   if (plant) openSpecimenDetails(plant);
 };
 
